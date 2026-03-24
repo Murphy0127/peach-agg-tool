@@ -94,14 +94,20 @@ const DODO_POOL_ABI = [
   "function _QUOTE_TARGET_() view returns (uint256)",
 ];
 
-// ── Peach API queries ───────────────────────────────────────────────
+// ── Peach debug API queries ──────────────────────────────────────────
 
-async function fetchPoolDebug(apiUrl: string, poolId: string, provider?: string): Promise<PoolDebugResponse[]> {
+function debugHeaders(debugToken?: string): Record<string, string> {
+  const h: Record<string, string> = { Accept: "application/json" };
+  if (debugToken) h["Authorization"] = `Bearer ${debugToken}`;
+  return h;
+}
+
+async function fetchPoolDebug(apiUrl: string, poolId: string, provider?: string, debugToken?: string): Promise<PoolDebugResponse[]> {
   const params = new URLSearchParams({ pool_id: poolId });
   if (provider) params.set("provider", provider);
-  const url = `${apiUrl}/router/pool_debug?${params}`;
+  const url = `${apiUrl}/debug/pool?${params}`;
   try {
-    const resp = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+    const resp = await fetch(url, { headers: debugHeaders(debugToken), signal: AbortSignal.timeout(10000) });
     const json = await resp.json() as any;
     if (json?.code === 200 && json?.data) {
       return Array.isArray(json.data) ? json.data : [json.data];
@@ -112,11 +118,11 @@ async function fetchPoolDebug(apiUrl: string, poolId: string, provider?: string)
   }
 }
 
-async function fetchPoolRedis(apiUrl: string, poolId: string, provider: string): Promise<PoolRedisResponse | null> {
+async function fetchPoolRedis(apiUrl: string, poolId: string, provider: string, debugToken?: string): Promise<PoolRedisResponse | null> {
   const params = new URLSearchParams({ pool_id: poolId, provider });
-  const url = `${apiUrl}/router/pool_redis?${params}`;
+  const url = `${apiUrl}/debug/pool/redis?${params}`;
   try {
-    const resp = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+    const resp = await fetch(url, { headers: debugHeaders(debugToken), signal: AbortSignal.timeout(10000) });
     const json = await resp.json() as any;
     if (json?.code === 200 && json?.data) return json.data;
     return null;
@@ -305,8 +311,17 @@ function diagnosePool(debug: PoolDebugResponse): string[] {
   if (d?.unlocked === false || d?.unlocked === 0) issues.push("pool is LOCKED (unlocked=false)");
   if (d?.tick_count !== undefined && d.tick_count === 0) issues.push("tick_count is ZERO (no ticks loaded)");
 
-  if (d?.buy_tax !== undefined && parseFloat(d.buy_tax) > 0.1) issues.push(`high buy tax: ${(parseFloat(d.buy_tax) * 100).toFixed(1)}%`);
-  if (d?.sell_tax !== undefined && parseFloat(d.sell_tax) > 0.1) issues.push(`high sell tax: ${(parseFloat(d.sell_tax) * 100).toFixed(1)}%`);
+  // Per-token tax (bps) — V2 / DODO pools
+  for (const [label, key] of [
+    ["token0 buy tax", "token0_buy_tax_bps"],
+    ["token0 sell tax", "token0_sell_tax_bps"],
+    ["token1 buy tax", "token1_buy_tax_bps"],
+    ["token1 sell tax", "token1_sell_tax_bps"],
+  ] as const) {
+    if (d?.[key] !== undefined && d[key] > 1000) {
+      issues.push(`high ${label}: ${(d[key] / 100).toFixed(1)}%`);
+    }
+  }
 
   for (const edge of debug.edges) {
     if (edge.max_amount_out === "0") {
@@ -388,7 +403,10 @@ Options:
   --version <v>        API version (default: v5)
   --check-redis        Also check Redis pool data for sync issues
   --no-onchain         Skip on-chain comparison
-  --force              Show pool debug even if simulation succeeds`);
+  --force              Show pool debug even if simulation succeeds
+
+Environment:
+  PEACH_DEBUG_TOKEN    Bearer token for Peach debug API (required)`);
     process.exit(1);
   }
 
@@ -400,6 +418,7 @@ Options:
   let apiUrl = "https://api.cipheron.org";
   let depth = 3, splitCount = 5, providers = "PANCAKEV2,PANCAKEV3,UNISWAPV3,DODO,THENA";
   let version = "v5", checkRedis = false, force = false, noOnchain = false;
+  const debugToken = process.env.PEACH_DEBUG_TOKEN || "";
 
   for (let i = 3; i < args.length; i++) {
     switch (args[i]) {
@@ -510,7 +529,7 @@ Options:
       continue;
     }
 
-    const debugInfos = await fetchPoolDebug(apiUrl, rp.poolId, rp.provider);
+    const debugInfos = await fetchPoolDebug(apiUrl, rp.poolId, rp.provider, debugToken);
 
     if (debugInfos.length === 0) {
       console.log(`  ${pad(rp.provider, 12)} ${rp.poolId.slice(0, 16)}... — pool_debug returned empty`);
@@ -524,7 +543,7 @@ Options:
       // Redis check
       let redisIssues: string[] = [];
       if (checkRedis) {
-        const redis = await fetchPoolRedis(apiUrl, rp.poolId, dbg.provider);
+        const redis = await fetchPoolRedis(apiUrl, rp.poolId, dbg.provider, debugToken);
         if (redis) {
           redisIssues = compareWithRedis(dbg, redis);
         } else {
@@ -547,7 +566,15 @@ Options:
         if (d.base_reserve !== undefined) console.log(`  │  baseReserve=${d.base_reserve} quoteReserve=${d.quote_reserve} k=${d.k}`);
         if (d.tick_count !== undefined) console.log(`  │  tick_count=${d.tick_count}`);
         if (d.token0_is_honeypot || d.token1_is_honeypot) console.log(`  │  HONEYPOT: t0=${d.token0_is_honeypot} t1=${d.token1_is_honeypot}`);
-        if (d.buy_tax !== undefined) console.log(`  │  buy_tax=${d.buy_tax} sell_tax=${d.sell_tax}`);
+        if (d.token0_buy_tax_bps !== undefined || d.token1_buy_tax_bps !== undefined) {
+          const taxes = [
+            d.token0_buy_tax_bps ? `t0_buy=${d.token0_buy_tax_bps}bps` : null,
+            d.token0_sell_tax_bps ? `t0_sell=${d.token0_sell_tax_bps}bps` : null,
+            d.token1_buy_tax_bps ? `t1_buy=${d.token1_buy_tax_bps}bps` : null,
+            d.token1_sell_tax_bps ? `t1_sell=${d.token1_sell_tax_bps}bps` : null,
+          ].filter(Boolean);
+          if (taxes.length > 0) console.log(`  │  tax: ${taxes.join(" ")}`);
+        }
         if (d.unlocked !== undefined) console.log(`  │  unlocked=${d.unlocked}`);
       }
 
@@ -575,7 +602,7 @@ Options:
     for (const rp of routePoolIds) {
       if (!rp.poolId) continue;
 
-      const debugInfos = await fetchPoolDebug(apiUrl, rp.poolId, rp.provider);
+      const debugInfos = await fetchPoolDebug(apiUrl, rp.poolId, rp.provider, debugToken);
       for (const dbg of debugInfos) {
         const providerUpper = dbg.provider.toUpperCase();
         let diffs: OnchainDiff[] = [];

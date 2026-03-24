@@ -33,6 +33,18 @@ Without OKX credentials, only `--agg peach` and `analyze`/`fetch-tokens` command
 
 If `${CLAUDE_SKILL_DIR}/.env` does not exist and the user wants to use OKX, remind them to set up credentials first.
 
+## Peach Debug API Credentials
+
+The `debug` command uses Peach aggregator's debug API endpoints which require Bearer token authentication. Set the token via environment variable:
+
+```
+PEACH_DEBUG_TOKEN="..."
+```
+
+Add it to `${CLAUDE_SKILL_DIR}/.env` alongside OKX credentials, or set it in the shell environment.
+
+**Without `PEACH_DEBUG_TOKEN`**, the `debug` command will still run quotes and on-chain comparisons, but pool inspection (memory state, Redis comparison, single-pool swap simulation) will return empty results.
+
 ## Commands
 
 ### quote - Single pair quote comparison
@@ -111,15 +123,17 @@ Analyzes a JSONL log file from `compare` and outputs:
 npx peach-agg-tool debug <from> <to> <amount> [options]
 ```
 
-Runs a Peach quote and, if simulation fails (or with `--force`), automatically inspects every pool in the route via the aggregator's `/router/pool_debug` endpoint. Reports:
+Runs a Peach quote and, if simulation fails (or with `--force`), inspects every pool in the route via the aggregator's debug API (`/debug/pool`). Reports:
 - Pool state: liquidity, reserves, prices, tick data
 - Honeypot detection flags
-- Buy/sell tax rates
+- Per-token buy/sell tax rates (bps)
 - Edge max_amount_out (zero = broken path)
 - Optionally compares in-memory vs Redis data (`--check-redis`) to detect sync issues
 
+**Requires**: `PEACH_DEBUG_TOKEN` environment variable for debug API access.
+
 **Key options:**
-- `--check-redis` — also query `/router/pool_redis` and compare with memory
+- `--check-redis` — also query `/debug/pool/redis` and compare with memory
 - `--no-onchain` — skip on-chain comparison (faster, only check Peach internal state)
 - `--force` — show pool debug even if simulation succeeds
 - `--api <url>` — Peach API URL (must point to aggregator with debug endpoints)
@@ -238,18 +252,91 @@ Tokens can be specified by symbol (case-insensitive) or `0x` address:
 3. **Short benchmark**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --duration 5 --interval 5`
 4. **Analyze results**: Find latest log in `/tmp/aggregator/` and run `npx peach-agg-tool analyze <file>`
 5. **Check DEX coverage**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env dex-stats --duration 10`
-6. **Debug sim failure**: `npx peach-agg-tool debug USDT BNB 100 --check-redis`
+6. **Debug sim failure** (4-step workflow):
+   - `hop-sim BNB USDT 1.0` → locate which hop deviates
+   - `debug BNB USDT 1.0 --check-redis --force` → compare memory/Redis/on-chain data
+   - Use `/debug/pool/swap` API to reproduce single-hop calculation
+   - `tax-check <intermediate_tokens>` → verify token transfer tax
 7. **Inspect pools even on success**: `npx peach-agg-tool debug BNB USDT 1.0 --force`
 8. **Check token tax**: `npx peach-agg-tool tax-check VIN CAKE`
 
-### Debugging workflow: hop-sim → tax-check
+### Systematic debugging workflow
 
-When a Peach simulation fails:
-1. Run `hop-sim` — automatically runs pool math + Router sim + findFailingStep
-2. If specific hops show deviation: stale pool data is the cause
-3. If all hops match but Router sim fails: transfer tax on intermediate tokens
-4. `hop-sim` outputs the `tax-check` command to run — just copy and execute
-5. Use `debug --check-redis` for deeper pool-level inspection if needed
+When a Peach quote has simulation failure or significant quote-vs-sim deviation, follow this 4-step process:
+
+#### Step 1: Locate — which hop deviates?
+
+Run `hop-sim` to do per-hop on-chain simulation, plus use the aggregator's `/debug/pool/swap` API to simulate each hop with the aggregator's own math:
+
+```bash
+npx peach-agg-tool hop-sim <from> <to> <amount>
+```
+
+For each hop, compare three numbers:
+- **Quote amount_out**: what the routing engine calculated (from the route response)
+- **Aggregator pool/swap**: what the aggregator calculates with current in-memory data (`/debug/pool/swap`)
+- **On-chain simulation**: what actually happens on-chain (eth_call via RPC)
+
+| Quote ≠ pool/swap | Routing engine logic issue (split accumulation, DP cache, etc.) |
+|---|---|
+| **pool/swap ≠ on-chain** | **Aggregator data stale vs chain** |
+| **All match, but full sim fails** | **Token transfer tax or router contract issue** |
+
+#### Step 2: Compare — is the data stale?
+
+For each problematic hop identified in Step 1, compare three data layers:
+
+```bash
+npx peach-agg-tool debug <from> <to> <amount> --check-redis --force
+```
+
+This queries:
+- `/debug/pool` — aggregator in-memory state (reserves, sqrtPrice, tick, liquidity)
+- `/debug/pool/redis` — Redis cache state (check for memory↔Redis drift)
+- On-chain RPC — live chain state (getReserves, slot0, liquidity)
+
+Also check `/debug/pool/version` for `last_update_time` to directly assess data freshness.
+
+#### Step 3: Reproduce — single-pool swap simulation
+
+Use `/debug/pool/swap` to reproduce the exact calculation the aggregator would do for the problematic hop:
+
+```
+GET /debug/pool/swap?pool_id=<addr>&provider=<name>&token_in=<addr>&token_out=<addr>&amount=<raw_amount>
+```
+
+Compare the returned `amount_out` with:
+- The quote's per-hop amount_out (from Step 1)
+- The on-chain simulation result
+
+This isolates whether the issue is in the pool math itself or in the routing/split logic.
+
+#### Step 4: Diagnose — token tax or aggregator bug?
+
+If data is fresh but simulation still fails:
+
+1. **Check token info** from aggregator cache: query `/debug/token` or `/debug/tokens` for all intermediate tokens in the route to see cached tax/honeypot flags
+2. **On-chain tax detection**: run `tax-check` for tokens the aggregator reports as tax-free but that show simulation deviation:
+   ```bash
+   npx peach-agg-tool tax-check <intermediate_token_1> <intermediate_token_2> ...
+   ```
+3. If on-chain tax is confirmed but aggregator cache shows 0 → aggregator's token info is stale
+4. If no tax found → likely an aggregator calculation bug, check the specific pool provider's swap math
+
+### Peach Debug API Reference
+
+All debug endpoints require `PEACH_DEBUG_TOKEN` and use base URL from `--api` (default: `https://api.cipheron.org`).
+
+| Endpoint | Purpose | Key Parameters |
+|----------|---------|---------------|
+| `GET /debug/pool` | Pool in-memory state + graph edges | `pool_id`, `provider` (opt) |
+| `GET /debug/pool/redis` | Raw Redis cache data | `pool_id`, `provider` |
+| `GET /debug/pool/swap` | Single-pool swap simulation | `pool_id`, `provider`, `token_in`, `token_out`, `amount` |
+| `GET /debug/pool/version` | Pool cache version & freshness | `pool_id`, `provider` |
+| `GET /debug/pool/ticks` | V3/Thena tick data (hex BCS) | `pool_id`, `provider` |
+| `GET /debug/token` | Token tax/honeypot info | `address` |
+| `GET /debug/tokens` | Batch token info | `addresses` (comma-separated) |
+| `GET /debug/route/refresh` | Force graph rebuild for pair | `from`, `target`, `depth` (opt) |
 
 ## Logs
 
