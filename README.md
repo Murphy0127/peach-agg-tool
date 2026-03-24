@@ -4,60 +4,46 @@ Peach vs OKX DEX 聚合器测试工具，同时也是 Claude Code 的 **peach** 
 
 ## 安装
 
-### 1. 安装 CLI 工具
+### 1. 安装并注册 Plugin
 
 ```bash
+# 安装 CLI 工具
 npm install -g peach-agg-tool
-```
 
-### 2. 注册为 Claude Code Plugin
-
-安装完成后，执行以下命令将 plugin 注册到 Claude Code：
-
-```bash
-# 创建 symlink
+# 一键注册为 Claude Code Plugin（创建 symlink + 注册 + 启用）
+INSTALL_PATH="$(npm root -g)/peach-agg-tool"
 mkdir -p ~/.claude/plugins/cache/npm/peach
-ln -sfn "$(npm root -g)/peach-agg-tool" ~/.claude/plugins/cache/npm/peach/current
-
-# 注册到 installed_plugins.json（追加 peach@npm 条目）
-# 如果你的 installed_plugins.json 尚无 peach@npm，手动添加：
+ln -sfn "$INSTALL_PATH" ~/.claude/plugins/cache/npm/peach/current
 node -e "
-const fs = require('fs');
-const p = require('os').homedir() + '/.claude/plugins/installed_plugins.json';
-const j = JSON.parse(fs.readFileSync(p, 'utf-8'));
-j.plugins['peach@npm'] = [{
-  scope: 'user',
-  installPath: require('os').homedir() + '/.claude/plugins/cache/npm/peach/current',
-  version: require(require('path').join(require('child_process').execSync('npm root -g').toString().trim(), 'peach-agg-tool', 'package.json')).version,
-  installedAt: new Date().toISOString(),
-  lastUpdated: new Date().toISOString()
-}];
-fs.writeFileSync(p, JSON.stringify(j, null, 2));
-console.log('Registered peach@npm plugin');
-"
+const fs = require('fs'), os = require('os'), path = require('path');
+const home = os.homedir();
+const installPath = home + '/.claude/plugins/cache/npm/peach/current';
+const ver = require(path.join('$INSTALL_PATH', 'package.json')).version;
 
-# 启用 plugin（追加到 settings.json 的 enabledPlugins）
-node -e "
-const fs = require('fs');
-const p = require('os').homedir() + '/.claude/settings.json';
-const j = JSON.parse(fs.readFileSync(p, 'utf-8'));
-j.enabledPlugins = j.enabledPlugins || {};
-j.enabledPlugins['peach@npm'] = true;
-fs.writeFileSync(p, JSON.stringify(j, null, 2));
-console.log('Enabled peach@npm plugin');
+// 注册 plugin
+const ip = home + '/.claude/plugins/installed_plugins.json';
+const ij = JSON.parse(fs.readFileSync(ip, 'utf-8'));
+ij.plugins['peach@npm'] = [{ scope: 'user', installPath, version: ver, installedAt: new Date().toISOString(), lastUpdated: new Date().toISOString() }];
+fs.writeFileSync(ip, JSON.stringify(ij, null, 2));
+
+// 启用 plugin
+const sp = home + '/.claude/settings.json';
+const sj = JSON.parse(fs.readFileSync(sp, 'utf-8'));
+sj.enabledPlugins = sj.enabledPlugins || {};
+sj.enabledPlugins['peach@npm'] = true;
+fs.writeFileSync(sp, JSON.stringify(sj, null, 2));
+
+console.log('peach@npm v' + ver + ' registered and enabled');
 "
 ```
 
 重启 Claude Code 或在会话中执行 `/reload-plugins` 即可使用。
 
-### 3. 配置 OKX 凭证
+### 2. 配置 OKX 凭证（可选）
 
 ```bash
-# 复制模板
 cp "$(npm root -g)/peach-agg-tool/skills/peach/.env.example" \
    "$(npm root -g)/peach-agg-tool/skills/peach/.env"
-
-# 编辑填入你的 OKX API 凭证
 vim "$(npm root -g)/peach-agg-tool/skills/peach/.env"
 ```
 
@@ -66,14 +52,10 @@ vim "$(npm root -g)/peach-agg-tool/skills/peach/.env"
 ## 更新
 
 ```bash
-# 更新 CLI + plugin（symlink 自动指向新版本）
-npm update -g peach-agg-tool
-
-# 在 Claude Code 中重新加载
-/reload-plugins
+npm update -g peach-agg-tool && /reload-plugins
 ```
 
-> 因为 symlink 指向 npm 全局安装路径，更新 npm 包后 plugin 自动生效，无需重新注册。
+> symlink 指向 npm 全局安装路径，更新后 plugin 自动生效，无需重新注册。
 
 ## 使用
 
