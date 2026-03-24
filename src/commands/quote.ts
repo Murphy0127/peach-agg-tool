@@ -14,7 +14,7 @@ export async function cmdQuote(args: string[]) {
     console.error(`Usage: agg-tool quote <from> <target> <amount> [options]
 
 Options:
-  --agg <name>         聚合器: peach, okx, all (默认: all)
+  --agg <name>         聚合器: peach, okx, all (默认: peach)
   --slippage <bps>     滑点基点 (默认: 50 = 0.5%)
   --sender <address>   发送地址 (自动检测)
   --rpc <url>          BSC RPC URL
@@ -31,7 +31,7 @@ Options:
   const target = resolveToken(args[1]);
   const amountStr = args[2];
 
-  let agg: "peach" | "okx" | "all" = "all";
+  let agg: "peach" | "okx" | "all" = "peach";
   let slippage = 50, sender = "", rpcUrl = "https://bsc-dataseed.bnbchain.org";
   let apiUrl = "https://api.cipheron.org";
   let depth = 3, splitCount = 5, providers = "PANCAKEV2,PANCAKEV3,UNISWAPV3,DODO,THENA";

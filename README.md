@@ -65,11 +65,11 @@ npm update -g peach-agg-tool && /reload-plugins
 # 查看帮助
 npx peach-agg-tool -h
 
-# 单次报价对比（Peach vs OKX）
+# 单次 Peach 报价
 npx peach-agg-tool quote BNB USDT 1.0
 
-# 仅 Peach 报价
-npx peach-agg-tool quote USDT BNB 100 --agg peach
+# Peach vs OKX 对比
+npx peach-agg-tool quote BNB USDT 1.0 --agg all
 
 # 持续对比跑 30 分钟
 npx peach-agg-tool compare --duration 30 --min-usd 1000
@@ -109,7 +109,7 @@ npx peach-agg-tool fetch-tokens
 
 | 命令 | 用途 |
 |------|------|
-| `quote <from> <to> <amount>` | 单次报价对比 + 模拟交易 |
+| `quote <from> <to> <amount>` | 单次报价 + 模拟（`--agg all` 对比） |
 | `compare` | 持续多轮随机对比 |
 | `debug <from> <to> <amount>` | 诊断模拟失败（Peach 内存 + 链上比对） |
 | `hop-sim <from> <to> <amount>` | 逐跳链上模拟对比，定位报价偏差 |

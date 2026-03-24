@@ -30,7 +30,7 @@ Global options:
                        Default search: skills/peach/.env > ~/.okx/.env
 
 Commands:
-  quote <from> <target> <amount>    Single pair quote comparison + simulation
+  quote <from> <target> <amount>    Single pair quote (use --agg all to compare)
   compare [options]                 Continuous multi-round comparison
   dex-stats [options]               OKX DEX usage distribution
   analyze <log.jsonl>               Analyze compare logs
@@ -40,7 +40,7 @@ Commands:
   fetch-tokens [options]            Refresh BSC token data from GeckoTerminal
 
 quote options:
-  --agg <name>         Aggregator: peach, okx, all (default: all)
+  --agg <name>         Aggregator: peach, okx, all (default: peach)
   --slippage <bps>     Slippage in bps (default: 50)
   --sender <addr>      Sender address (auto-detect)
   --rpc <url>          BSC RPC URL
