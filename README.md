@@ -24,13 +24,12 @@ npm install -g peach-agg-tool
 
 ### 3. 配置凭证（可选）
 
-Plugin 安装后，在 skill 目录下创建 `.env` 文件：
+在 `~/.config/peach-agg-tool/.env` 中配置凭证（插件更新不会丢失）：
 
 ```bash
-# 找到 plugin 的 skill 目录（plugin 安装后 Claude 会自动解析 ${CLAUDE_SKILL_DIR}）
-# 也可以在 ~/.okx/.env 放置凭证，工具会自动搜索
-cp skills/peach/.env.example skills/peach/.env
-vim skills/peach/.env
+mkdir -p ~/.config/peach-agg-tool
+cp skills/peach/.env.example ~/.config/peach-agg-tool/.env
+vim ~/.config/peach-agg-tool/.env
 ```
 
 `.env` 支持的变量：
