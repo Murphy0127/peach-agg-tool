@@ -145,30 +145,29 @@ npx peach-agg-tool debug 0x... 0x... 1000000000000000000 --api http://localhost:
 npx peach-agg-tool hop-sim <from> <to> <amount> [options]
 ```
 
-Fetches a Peach quote, then independently simulates each hop on-chain using:
-- **V2 pools**: `getReserves()` + constant-product formula
-- **V3 pools**: QuoterV2 `quoteExactInputSingle()`
-- **DODO pools**: `querySellBase()`/`querySellQuote()`
+Two-layer per-hop analysis:
+1. **Per-hop pool simulation** (V2 reserve math, V3 QuoterV2, DODO querySell) — tests pool data accuracy
+2. **Full route eth_call** via SDK Router contract — shows actual output including transfer tax
+3. **SDK findFailingStep** — pinpoints which step causes the revert
 
-Compares Peach's predicted `amount_out` per hop vs actual on-chain result.
-Also detects route splits and amount flow continuity.
+By comparing pool math (no tax) vs actual Router simulation (with tax), instantly reveals
+whether the issue is stale pool data or transfer tax on intermediate tokens.
 
 **Key options:**
 - `--threshold <bps>` — deviation alert threshold (default: 50 = 0.5%)
-- `--full-sim` — also run full route simulation at the end
 - Other options same as `debug` (--rpc, --api, --depth, --split)
 
 **Examples:**
 ```bash
 npx peach-agg-tool hop-sim BNB USDT 1.0
-npx peach-agg-tool hop-sim BNB USDT 1.0 --full-sim --threshold 10
+npx peach-agg-tool hop-sim BNB USDT 1.0 --threshold 10
 ```
 
 **Output includes:**
 - Per-hop comparison table: Peach Out vs On-chain Out, deviation %, status
-- Route split detection (e.g., "Hop 2 uses 40% of Hop 1's output")
-- Diagnosis: stale data, sim failures, or "all hops match → likely transfer tax"
-- When `--full-sim` is used: if per-hop is correct but full sim fails, suggests `tax-check` on intermediate tokens
+- Full route simulation result via Router contract (actual output with tax)
+- findFailingStep: which specific step causes the revert
+- Diagnosis: cross-layer comparison → stale data / transfer tax / both
 
 ### tax-check - Detect token transfer tax
 
@@ -246,10 +245,10 @@ Tokens can be specified by symbol (case-insensitive) or `0x` address:
 ### Debugging workflow: hop-sim → tax-check
 
 When a Peach simulation fails:
-1. Run `hop-sim --full-sim` to compare each hop's Peach output vs on-chain
+1. Run `hop-sim` — automatically runs pool math + Router sim + findFailingStep
 2. If specific hops show deviation: stale pool data is the cause
-3. If all hops match but full sim fails: transfer tax on intermediate tokens
-4. Run `tax-check` on flagged intermediate tokens to confirm and measure tax rate
+3. If all hops match but Router sim fails: transfer tax on intermediate tokens
+4. `hop-sim` outputs the `tax-check` command to run — just copy and execute
 5. Use `debug --check-redis` for deeper pool-level inspection if needed
 
 ## Logs
