@@ -10,8 +10,8 @@
  *   fetch-tokens  Refresh BSC token data
  *
  * Usage:
- *   npx @pagg/agg-tool <command> [options]
- *   npx @pagg/agg-tool -h
+ *   npx peach-agg-tool <command> [options]
+ *   npx peach-agg-tool -h
  */
 
 import { loadOkxEnv } from "./lib/common.js";
@@ -21,7 +21,7 @@ function printHelp() {
 Peach vs OKX DEX Aggregator Testing Tool
 
 Usage:
-  npx @pagg/agg-tool <command> [options]
+  npx peach-agg-tool <command> [options]
 
 Global options:
   --env-file <path>    Path to .env file with OKX credentials
@@ -67,13 +67,13 @@ fetch-tokens options:
   --pages <n>          Pool pages to fetch (default: 8)
 
 Examples:
-  npx @pagg/agg-tool quote BNB USDT 1.0
-  npx @pagg/agg-tool quote USDT BNB 100 --agg peach
-  npx @pagg/agg-tool compare --duration 30 --min-usd 1000 --max-usd 100000
-  npx @pagg/agg-tool compare --no-sim --duration 10
-  npx @pagg/agg-tool dex-stats --duration 30
-  npx @pagg/agg-tool analyze /tmp/aggregator/compare-xxx.jsonl
-  npx @pagg/agg-tool fetch-tokens --top 50
+  npx peach-agg-tool quote BNB USDT 1.0
+  npx peach-agg-tool quote USDT BNB 100 --agg peach
+  npx peach-agg-tool compare --duration 30 --min-usd 1000 --max-usd 100000
+  npx peach-agg-tool compare --no-sim --duration 10
+  npx peach-agg-tool dex-stats --duration 30
+  npx peach-agg-tool analyze /tmp/aggregator/compare-xxx.jsonl
+  npx peach-agg-tool fetch-tokens --top 50
 `);
 }
 

@@ -178,7 +178,7 @@ export async function cmdFetchTokens(args: string[]) {
 Fetch BSC top traded tokens by 24h DEX volume (via GeckoTerminal).
 
 Usage:
-  npx @pagg/agg-tool fetch-tokens [--top <n>] [--pages <n>]
+  npx peach-agg-tool fetch-tokens [--top <n>] [--pages <n>]
 
 Options:
   --top <n>      Number of tokens to keep (default: 100)

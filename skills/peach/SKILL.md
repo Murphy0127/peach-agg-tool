@@ -7,7 +7,7 @@ description: Peach DEX aggregator testing and comparison tool for BSC. Use when 
 
 CLI tool for testing and comparing DEX aggregator quotes on BSC (Peach vs OKX).
 
-Install: `npm install -g @pagg/agg-tool` or use directly via `npx @pagg/agg-tool`.
+Install: `npm install -g peach-agg-tool` or use directly via `npx peach-agg-tool`.
 
 ## OKX Credentials
 
@@ -26,7 +26,7 @@ OKX_PROJECT_ID="..."
 
 **IMPORTANT**: When running any command that needs OKX (quote, compare, dex-stats), always pass the env file:
 ```bash
-npx @pagg/agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env <command> [options]
+npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env <command> [options]
 ```
 
 Without OKX credentials, only `--agg peach` and `analyze`/`fetch-tokens` commands will work.
@@ -38,7 +38,7 @@ If `${CLAUDE_SKILL_DIR}/.env` does not exist and the user wants to use OKX, remi
 ### quote - Single pair quote comparison
 
 ```bash
-npx @pagg/agg-tool quote <from> <to> <amount> [options]
+npx peach-agg-tool quote <from> <to> <amount> [options]
 ```
 
 Queries one or both aggregators, displays quoted output amounts, swap routes, and simulates execution via `eth_call`.
@@ -54,15 +54,15 @@ Queries one or both aggregators, displays quoted output amounts, swap routes, an
 
 **Examples:**
 ```bash
-npx @pagg/agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 1.0
-npx @pagg/agg-tool quote USDT BNB 100 --agg peach
-npx @pagg/agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 0.1 --depth 5 --split 10
+npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 1.0
+npx peach-agg-tool quote USDT BNB 100 --agg peach
+npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 0.1 --depth 5 --split 10
 ```
 
 ### compare - Continuous benchmarking
 
 ```bash
-npx @pagg/agg-tool compare [options]
+npx peach-agg-tool compare [options]
 ```
 
 Runs multiple rounds with random token pairs and trade sizes, comparing both aggregators and collecting statistics.
@@ -76,8 +76,8 @@ Runs multiple rounds with random token pairs and trade sizes, comparing both agg
 
 **Examples:**
 ```bash
-npx @pagg/agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --duration 30 --min-usd 1000 --max-usd 100000
-npx @pagg/agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --no-sim --duration 10
+npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --duration 30 --min-usd 1000 --max-usd 100000
+npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --no-sim --duration 10
 ```
 
 Output: JSONL log at `/tmp/aggregator/compare-<timestamp>.jsonl`
@@ -85,7 +85,7 @@ Output: JSONL log at `/tmp/aggregator/compare-<timestamp>.jsonl`
 ### dex-stats - OKX DEX usage distribution
 
 ```bash
-npx @pagg/agg-tool dex-stats [options]
+npx peach-agg-tool dex-stats [options]
 ```
 
 Collects which DEXes OKX routes through, with volume distribution.
@@ -95,7 +95,7 @@ Collects which DEXes OKX routes through, with volume distribution.
 ### analyze - Analyze comparison logs
 
 ```bash
-npx @pagg/agg-tool analyze <log.jsonl>
+npx peach-agg-tool analyze <log.jsonl>
 ```
 
 Analyzes a JSONL log file from `compare` and outputs:
@@ -108,7 +108,7 @@ Analyzes a JSONL log file from `compare` and outputs:
 ### fetch-tokens - Refresh token data
 
 ```bash
-npx @pagg/agg-tool fetch-tokens [--top 100] [--pages 8]
+npx peach-agg-tool fetch-tokens [--top 100] [--pages 8]
 ```
 
 Fetches BSC top traded tokens from GeckoTerminal and updates the bundled token database.
@@ -117,7 +117,7 @@ Fetches BSC top traded tokens from GeckoTerminal and updates the bundled token d
 
 Tokens can be specified by symbol (case-insensitive) or `0x` address:
 - Symbols: BNB, WBNB, USDT, USDC, ETH, BTCB, CAKE, and ~100 more
-- Run `npx @pagg/agg-tool fetch-tokens` to refresh the token list
+- Run `npx peach-agg-tool fetch-tokens` to refresh the token list
 
 ## Interpreting Output
 
@@ -138,11 +138,11 @@ Tokens can be specified by symbol (case-insensitive) or `0x` address:
 
 ## Common Workflows
 
-1. **Quick price check**: `npx @pagg/agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 1.0`
-2. **Peach-only** (no OKX creds needed): `npx @pagg/agg-tool quote BNB USDT 10 --agg peach --depth 5 --split 10`
-3. **Short benchmark**: `npx @pagg/agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --duration 5 --interval 5`
-4. **Analyze results**: Find latest log in `/tmp/aggregator/` and run `npx @pagg/agg-tool analyze <file>`
-5. **Check DEX coverage**: `npx @pagg/agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env dex-stats --duration 10`
+1. **Quick price check**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 1.0`
+2. **Peach-only** (no OKX creds needed): `npx peach-agg-tool quote BNB USDT 10 --agg peach --depth 5 --split 10`
+3. **Short benchmark**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --duration 5 --interval 5`
+4. **Analyze results**: Find latest log in `/tmp/aggregator/` and run `npx peach-agg-tool analyze <file>`
+5. **Check DEX coverage**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env dex-stats --duration 10`
 
 ## Logs
 

@@ -1,10 +1,10 @@
 {
-  "name": "@pagg/agg-tool",
+  "name": "peach-agg-tool",
   "version": "0.1.0",
   "description": "CLI tool for comparing Peach and OKX DEX aggregators on BSC",
   "type": "module",
   "bin": {
-    "agg-tool": "./dist/cli.mjs"
+    "peach-agg-tool": "./dist/cli.mjs"
   },
   "files": [
     "dist",

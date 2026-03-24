@@ -49,7 +49,7 @@ export function loadTokensFile(): TokensFile {
   if (_cache) return _cache;
   const filePath = tokensFilePath();
   if (!fs.existsSync(filePath)) {
-    console.error(`tokens.json not found at ${filePath}. Run: npx @pagg/agg-tool fetch-tokens`);
+    console.error(`tokens.json not found at ${filePath}. Run: npx peach-agg-tool fetch-tokens`);
     process.exit(1);
   }
   _cache = JSON.parse(fs.readFileSync(filePath, "utf-8"));

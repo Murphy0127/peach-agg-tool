@@ -145,5 +145,5 @@ export async function cmdCompare(args: string[]) {
     if (waitMs > 0 && Date.now() + waitMs < endTime) await sleep(waitMs);
   }
 
-  console.log(`\nDone. ${round} rounds. Log: ${logPath}\nAnalyze: npx @pagg/agg-tool analyze ${logPath}`);
+  console.log(`\nDone. ${round} rounds. Log: ${logPath}\nAnalyze: npx peach-agg-tool analyze ${logPath}`);
 }
