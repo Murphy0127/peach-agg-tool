@@ -1,0 +1,34 @@
+{
+  "name": "@pagg/agg-tool",
+  "version": "0.1.0",
+  "description": "CLI tool for comparing Peach and OKX DEX aggregators on BSC",
+  "type": "module",
+  "bin": {
+    "agg-tool": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "data",
+    "skills",
+    ".claude-plugin"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@pagg/aggregator-sdk": "0.0.0-experimental-20260313085229",
+    "ethers": "^6.0.0",
+    "undici": "^7.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
