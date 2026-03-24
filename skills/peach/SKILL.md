@@ -24,14 +24,20 @@ OKX_PASSPHRASE="..."
 OKX_PROJECT_ID="..."
 ```
 
-**IMPORTANT**: When running any command that needs OKX (quote, compare, dex-stats), always pass the env file:
+**IMPORTANT**: Always pass the env file so that OKX credentials and debug token are available:
 ```bash
 npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env <command> [options]
 ```
 
-Without OKX credentials, only `--agg peach` and `analyze`/`fetch-tokens` commands will work.
+Without the env file:
+- OKX commands (`--agg all`, `compare`, `dex-stats`) won't have OKX credentials
+- `debug` command won't be able to inspect pool state (requires `PEACH_DEBUG_TOKEN`)
+- Peach-only commands (`quote --agg peach`, `analyze`, `fetch-tokens`, `hop-sim`, `tax-check`) still work
 
-If `${CLAUDE_SKILL_DIR}/.env` does not exist and the user wants to use OKX, remind them to set up credentials first.
+If `${CLAUDE_SKILL_DIR}/.env` does not exist, copy the template and fill in credentials:
+```bash
+cp ${CLAUDE_SKILL_DIR}/.env.example ${CLAUDE_SKILL_DIR}/.env
+```
 
 ## Peach Debug API Credentials
 
