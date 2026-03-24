@@ -32,6 +32,7 @@ Commands:
   compare [options]                 Continuous multi-round comparison
   dex-stats [options]               OKX DEX usage distribution
   analyze <log.jsonl>               Analyze compare logs
+  debug <from> <target> <amount>    Diagnose Peach simulation failures
   fetch-tokens [options]            Refresh BSC token data from GeckoTerminal
 
 quote options:
@@ -62,6 +63,16 @@ dex-stats options:
   --max-usd <n>        Max trade size (default: 1000000)
   --out <path>         Output file (default: /tmp/aggregator/okx-dex-stats.json)
 
+debug options:
+  --rpc <url>          BSC RPC URL
+  --api <url>          Peach API URL
+  --sender <addr>      Sender address (auto-detect)
+  --slippage <bps>     Slippage (default: 50)
+  --depth <n>          Search depth (default: 3)
+  --split <n>          Split count (default: 5)
+  --check-redis        Also check Redis data for sync issues
+  --force              Show pool debug even if simulation succeeds
+
 fetch-tokens options:
   --top <n>            Number of tokens to keep (default: 100)
   --pages <n>          Pool pages to fetch (default: 8)
@@ -73,6 +84,8 @@ Examples:
   npx peach-agg-tool compare --no-sim --duration 10
   npx peach-agg-tool dex-stats --duration 30
   npx peach-agg-tool analyze /tmp/aggregator/compare-xxx.jsonl
+  npx peach-agg-tool debug BNB USDT 1.0
+  npx peach-agg-tool debug USDT BNB 100 --check-redis --force
   npx peach-agg-tool fetch-tokens --top 50
 `);
 }
@@ -120,6 +133,11 @@ async function main() {
     case "analyze": {
       const { cmdAnalyze } = await import("./commands/analyze.js");
       await cmdAnalyze(rest);
+      break;
+    }
+    case "debug": {
+      const { cmdDebug } = await import("./commands/debug.js");
+      await cmdDebug(rest);
       break;
     }
     case "fetch-tokens": {

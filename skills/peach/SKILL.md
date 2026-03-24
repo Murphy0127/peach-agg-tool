@@ -105,6 +105,37 @@ Analyzes a JSONL log file from `compare` and outputs:
 - Missing DEXes (ones OKX uses that Peach doesn't)
 - Worst-performing token pairs for Peach
 
+### debug - Diagnose simulation failures
+
+```bash
+npx peach-agg-tool debug <from> <to> <amount> [options]
+```
+
+Runs a Peach quote and, if simulation fails (or with `--force`), automatically inspects every pool in the route via the aggregator's `/router/pool_debug` endpoint. Reports:
+- Pool state: liquidity, reserves, prices, tick data
+- Honeypot detection flags
+- Buy/sell tax rates
+- Edge max_amount_out (zero = broken path)
+- Optionally compares in-memory vs Redis data (`--check-redis`) to detect sync issues
+
+**Key options:**
+- `--check-redis` — also query `/router/pool_redis` and compare with memory
+- `--force` — show pool debug even if simulation succeeds
+- `--api <url>` — Peach API URL (must point to aggregator with debug endpoints)
+- Other options same as `quote` (--rpc, --slippage, --depth, --split, --providers)
+
+**Examples:**
+```bash
+npx peach-agg-tool debug BNB USDT 1.0
+npx peach-agg-tool debug USDT BNB 100 --check-redis --force
+npx peach-agg-tool debug 0x... 0x... 1000000000000000000 --api http://localhost:8080
+```
+
+**Diagnosis output includes:**
+- Per-pool: provider, token pair, fee, liquidity, prices, edges, issues found
+- Summary: which pools have problems and likely root cause
+- Common failure causes: honeypot tokens, zero liquidity, stale tick data, Redis sync issues
+
 ### fetch-tokens - Refresh token data
 
 ```bash
@@ -143,6 +174,8 @@ Tokens can be specified by symbol (case-insensitive) or `0x` address:
 3. **Short benchmark**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --duration 5 --interval 5`
 4. **Analyze results**: Find latest log in `/tmp/aggregator/` and run `npx peach-agg-tool analyze <file>`
 5. **Check DEX coverage**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env dex-stats --duration 10`
+6. **Debug sim failure**: `npx peach-agg-tool debug USDT BNB 100 --check-redis`
+7. **Inspect pools even on success**: `npx peach-agg-tool debug BNB USDT 1.0 --force`
 
 ## Logs
 
