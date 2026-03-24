@@ -120,6 +120,7 @@ Runs a Peach quote and, if simulation fails (or with `--force`), automatically i
 
 **Key options:**
 - `--check-redis` — also query `/router/pool_redis` and compare with memory
+- `--no-onchain` — skip on-chain comparison (faster, only check Peach internal state)
 - `--force` — show pool debug even if simulation succeeds
 - `--api <url>` — Peach API URL (must point to aggregator with debug endpoints)
 - Other options same as `quote` (--rpc, --slippage, --depth, --split, --providers)
@@ -133,8 +134,10 @@ npx peach-agg-tool debug 0x... 0x... 1000000000000000000 --api http://localhost:
 
 **Diagnosis output includes:**
 - Per-pool: provider, token pair, fee, liquidity, prices, edges, issues found
+- **Peach vs On-chain diff table**: compares sqrtPriceX96/tick/liquidity (V3), reserve0/reserve1 (V2), baseReserve/quoteReserve (DODO) with live chain data
+- Fields marked `⚠ STALE` indicate Peach cached data is out of date vs on-chain
 - Summary: which pools have problems and likely root cause
-- Common failure causes: honeypot tokens, zero liquidity, stale tick data, Redis sync issues
+- Common failure causes: honeypot tokens, zero liquidity, stale data, tick mismatch, Redis sync issues
 
 ### fetch-tokens - Refresh token data
 

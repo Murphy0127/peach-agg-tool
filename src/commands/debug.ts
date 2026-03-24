@@ -4,8 +4,9 @@
  * Workflow:
  *   1. Run a Peach quote
  *   2. If simulation fails (or always if --force), fetch pool_debug for each pool in the route
- *   3. Optionally compare with pool_redis to detect data sync issues
- *   4. Print diagnostic summary
+ *   3. Read on-chain pool state via RPC and compare with Peach data
+ *   4. Optionally compare with pool_redis to detect data sync issues
+ *   5. Print diagnostic summary
  */
 
 import { ethers } from "ethers";
@@ -15,6 +16,8 @@ import {
 } from "../lib/common.js";
 import { queryPeach } from "../lib/peach.js";
 import { resolveToken, tokenLabel, tokenDecimals, fmtAmt } from "../lib/tokens.js";
+
+// ── Interfaces ──────────────────────────────────────────────────────
 
 interface PoolDebugResponse {
   pool_id: string;
@@ -47,6 +50,52 @@ interface PoolRedisResponse {
   ticks_exists: boolean;
 }
 
+interface OnchainV3State {
+  sqrtPriceX96: bigint;
+  tick: number;
+  liquidity: bigint;
+}
+
+interface OnchainV2State {
+  reserve0: bigint;
+  reserve1: bigint;
+}
+
+interface OnchainDODOState {
+  baseReserve: bigint;
+  quoteReserve: bigint;
+  baseTarget: bigint;
+  quoteTarget: bigint;
+}
+
+interface OnchainDiff {
+  field: string;
+  peach: string;
+  onchain: string;
+  deviation: string;
+  critical: boolean;
+}
+
+// ── ABI fragments ───────────────────────────────────────────────────
+
+const V3_POOL_ABI = [
+  "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint32 feeProtocol, bool unlocked)",
+  "function liquidity() view returns (uint128)",
+];
+
+const V2_PAIR_ABI = [
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+];
+
+const DODO_POOL_ABI = [
+  "function _BASE_RESERVE_() view returns (uint256)",
+  "function _QUOTE_RESERVE_() view returns (uint256)",
+  "function _BASE_TARGET_() view returns (uint256)",
+  "function _QUOTE_TARGET_() view returns (uint256)",
+];
+
+// ── Peach API queries ───────────────────────────────────────────────
+
 async function fetchPoolDebug(apiUrl: string, poolId: string, provider?: string): Promise<PoolDebugResponse[]> {
   const params = new URLSearchParams({ pool_id: poolId });
   if (provider) params.set("provider", provider);
@@ -76,20 +125,176 @@ async function fetchPoolRedis(apiUrl: string, poolId: string, provider: string):
   }
 }
 
+// ── On-chain reads ──────────────────────────────────────────────────
+
+async function readV3Onchain(rpcProvider: ethers.JsonRpcProvider, poolAddr: string): Promise<OnchainV3State | null> {
+  try {
+    const pool = new ethers.Contract(poolAddr, V3_POOL_ABI, rpcProvider);
+    const [slot0, liquidity] = await Promise.all([pool.slot0(), pool.liquidity()]);
+    return {
+      sqrtPriceX96: slot0.sqrtPriceX96,
+      tick: Number(slot0.tick),
+      liquidity: liquidity,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readV2Onchain(rpcProvider: ethers.JsonRpcProvider, poolAddr: string): Promise<OnchainV2State | null> {
+  try {
+    const pair = new ethers.Contract(poolAddr, V2_PAIR_ABI, rpcProvider);
+    const reserves = await pair.getReserves();
+    return {
+      reserve0: reserves.reserve0,
+      reserve1: reserves.reserve1,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readDODOOnchain(rpcProvider: ethers.JsonRpcProvider, poolAddr: string): Promise<OnchainDODOState | null> {
+  try {
+    const pool = new ethers.Contract(poolAddr, DODO_POOL_ABI, rpcProvider);
+    const [baseReserve, quoteReserve, baseTarget, quoteTarget] = await Promise.all([
+      pool._BASE_RESERVE_(),
+      pool._QUOTE_RESERVE_(),
+      pool._BASE_TARGET_(),
+      pool._QUOTE_TARGET_(),
+    ]);
+    return { baseReserve, quoteReserve, baseTarget, quoteTarget };
+  } catch {
+    return null;
+  }
+}
+
+// ── Comparison logic ────────────────────────────────────────────────
+
+function pctDeviation(peach: bigint, onchain: bigint): string {
+  if (onchain === 0n) return peach === 0n ? "0%" : "∞";
+  const diff = peach > onchain ? peach - onchain : onchain - peach;
+  const pct = Number(diff * 10000n / onchain) / 100;
+  const sign = peach >= onchain ? "+" : "-";
+  return `${sign}${pct.toFixed(4)}%`;
+}
+
+function isCriticalDeviation(peach: bigint, onchain: bigint, thresholdBps: number = 10): boolean {
+  if (onchain === 0n) return peach !== 0n;
+  const diff = peach > onchain ? peach - onchain : onchain - peach;
+  return Number(diff * 10000n / onchain) > thresholdBps;
+}
+
+function compareV3WithOnchain(debug: PoolDebugResponse, onchain: OnchainV3State): OnchainDiff[] {
+  const diffs: OnchainDiff[] = [];
+  const d = debug.detail;
+
+  if (d?.sqrt_price_x96 !== undefined) {
+    const peachVal = BigInt(d.sqrt_price_x96);
+    diffs.push({
+      field: "sqrtPriceX96",
+      peach: peachVal.toString(),
+      onchain: onchain.sqrtPriceX96.toString(),
+      deviation: pctDeviation(peachVal, onchain.sqrtPriceX96),
+      critical: isCriticalDeviation(peachVal, onchain.sqrtPriceX96),
+    });
+  }
+
+  if (d?.tick !== undefined) {
+    const peachTick = Number(d.tick);
+    const diff = Math.abs(peachTick - onchain.tick);
+    diffs.push({
+      field: "tick",
+      peach: peachTick.toString(),
+      onchain: onchain.tick.toString(),
+      deviation: diff === 0 ? "0" : `${peachTick > onchain.tick ? "+" : "-"}${diff}`,
+      critical: diff > 10,
+    });
+  }
+
+  if (d?.liquidity !== undefined) {
+    const peachVal = BigInt(d.liquidity);
+    diffs.push({
+      field: "liquidity",
+      peach: peachVal.toString(),
+      onchain: onchain.liquidity.toString(),
+      deviation: pctDeviation(peachVal, onchain.liquidity),
+      critical: isCriticalDeviation(peachVal, onchain.liquidity, 100), // 1% threshold
+    });
+  }
+
+  return diffs;
+}
+
+function compareV2WithOnchain(debug: PoolDebugResponse, onchain: OnchainV2State): OnchainDiff[] {
+  const diffs: OnchainDiff[] = [];
+  const d = debug.detail;
+
+  if (d?.reserve0 !== undefined) {
+    const peachVal = BigInt(d.reserve0);
+    diffs.push({
+      field: "reserve0",
+      peach: peachVal.toString(),
+      onchain: onchain.reserve0.toString(),
+      deviation: pctDeviation(peachVal, onchain.reserve0),
+      critical: isCriticalDeviation(peachVal, onchain.reserve0, 50), // 0.5%
+    });
+  }
+
+  if (d?.reserve1 !== undefined) {
+    const peachVal = BigInt(d.reserve1);
+    diffs.push({
+      field: "reserve1",
+      peach: peachVal.toString(),
+      onchain: onchain.reserve1.toString(),
+      deviation: pctDeviation(peachVal, onchain.reserve1),
+      critical: isCriticalDeviation(peachVal, onchain.reserve1, 50),
+    });
+  }
+
+  return diffs;
+}
+
+function compareDODOWithOnchain(debug: PoolDebugResponse, onchain: OnchainDODOState): OnchainDiff[] {
+  const diffs: OnchainDiff[] = [];
+  const d = debug.detail;
+
+  const fields: [string, string, bigint][] = [
+    ["baseReserve", "base_reserve", onchain.baseReserve],
+    ["quoteReserve", "quote_reserve", onchain.quoteReserve],
+    ["baseTarget", "base_target", onchain.baseTarget],
+    ["quoteTarget", "quote_target", onchain.quoteTarget],
+  ];
+
+  for (const [label, key, onchainVal] of fields) {
+    if (d?.[key] !== undefined) {
+      const peachVal = BigInt(d[key]);
+      diffs.push({
+        field: label,
+        peach: peachVal.toString(),
+        onchain: onchainVal.toString(),
+        deviation: pctDeviation(peachVal, onchainVal),
+        critical: isCriticalDeviation(peachVal, onchainVal, 50),
+      });
+    }
+  }
+
+  return diffs;
+}
+
+// ── Pool diagnosis ──────────────────────────────────────────────────
+
 function diagnosePool(debug: PoolDebugResponse): string[] {
   const issues: string[] = [];
   const d = debug.detail;
 
-  // Check honeypot
   if (d?.token0_is_honeypot) issues.push(`token0 (${tokenLabel(debug.token0)}) flagged as HONEYPOT`);
   if (d?.token1_is_honeypot) issues.push(`token1 (${tokenLabel(debug.token1)}) flagged as HONEYPOT`);
 
-  // Check liquidity
   if (d?.liquidity !== undefined && (d.liquidity === "0" || d.liquidity === 0)) {
     issues.push("liquidity is ZERO");
   }
 
-  // Check reserves (V2/DODO)
   if (d?.reserve0 !== undefined && d?.reserve1 !== undefined) {
     if (d.reserve0 === "0" || d.reserve1 === "0") issues.push("one or both reserves are ZERO");
   }
@@ -97,17 +302,12 @@ function diagnosePool(debug: PoolDebugResponse): string[] {
     if (d.base_reserve === "0" || d.quote_reserve === "0") issues.push("base or quote reserve is ZERO");
   }
 
-  // Check if pool is locked/paused
   if (d?.unlocked === false || d?.unlocked === 0) issues.push("pool is LOCKED (unlocked=false)");
-
-  // Check tick count for V3 pools
   if (d?.tick_count !== undefined && d.tick_count === 0) issues.push("tick_count is ZERO (no ticks loaded)");
 
-  // Check buy/sell taxes (DODO/V2)
   if (d?.buy_tax !== undefined && parseFloat(d.buy_tax) > 0.1) issues.push(`high buy tax: ${(parseFloat(d.buy_tax) * 100).toFixed(1)}%`);
   if (d?.sell_tax !== undefined && parseFloat(d.sell_tax) > 0.1) issues.push(`high sell tax: ${(parseFloat(d.sell_tax) * 100).toFixed(1)}%`);
 
-  // Check edge max_amount_out
   for (const edge of debug.edges) {
     if (edge.max_amount_out === "0") {
       issues.push(`edge ${edge.from.slice(0, 8)}→${edge.target.slice(0, 8)}: max_amount_out is ZERO`);
@@ -125,7 +325,6 @@ function compareWithRedis(debug: PoolDebugResponse, redis: PoolRedisResponse): s
     return issues;
   }
 
-  // For V3-type pools, check ticks
   if (["PANCAKEV3", "UNISWAPV3", "THENA"].includes(debug.provider.toUpperCase())) {
     if (!redis.ticks_exists) {
       issues.push("ticks NOT FOUND in Redis (V3 pool needs tick data)");
@@ -133,7 +332,6 @@ function compareWithRedis(debug: PoolDebugResponse, redis: PoolRedisResponse): s
       issues.push("Redis tick_count is ZERO");
     }
 
-    // Compare tick counts
     const memoryTickCount = debug.detail?.tick_count;
     if (memoryTickCount !== undefined && redis.tick_count !== undefined && memoryTickCount !== redis.tick_count) {
       issues.push(`tick count mismatch: memory=${memoryTickCount} vs redis=${redis.tick_count}`);
@@ -143,11 +341,41 @@ function compareWithRedis(debug: PoolDebugResponse, redis: PoolRedisResponse): s
   return issues;
 }
 
+// ── Formatting helpers ──────────────────────────────────────────────
+
+function truncNum(s: string, maxLen: number = 20): string {
+  if (s.length <= maxLen) return s;
+  return s.slice(0, maxLen - 3) + "...";
+}
+
+function printDiffTable(diffs: OnchainDiff[]) {
+  if (diffs.length === 0) return;
+  const rows = diffs.map(d => [
+    d.field,
+    truncNum(d.peach),
+    truncNum(d.onchain),
+    d.deviation,
+    d.critical ? "⚠ STALE" : "OK",
+  ]);
+  const headers = ["Field", "Peach", "On-chain", "Deviation", "Status"];
+  // Simple table output
+  const cw = headers.map((h, i) => Math.max(h.length, ...rows.map(r => r[i].length)));
+  const sep = "  │  +" + cw.map(w => "-".repeat(w + 2)).join("+") + "+";
+  const fr = (row: string[]) => "  │  | " + row.map((c, i) => pad(c, cw[i])).join(" | ") + " |";
+  console.log(sep);
+  console.log(fr(headers));
+  console.log(sep);
+  for (const row of rows) console.log(fr(row));
+  console.log(sep);
+}
+
+// ── Main command ────────────────────────────────────────────────────
+
 export async function cmdDebug(args: string[]) {
   if (args.length < 3) {
     console.error(`Usage: peach-agg-tool debug <from> <target> <amount> [options]
 
-Diagnose Peach simulation failures by inspecting pool state.
+Diagnose Peach simulation failures by inspecting pool state and comparing with on-chain data.
 
 Options:
   --rpc <url>          BSC RPC URL
@@ -159,6 +387,7 @@ Options:
   --providers <list>   DEX providers
   --version <v>        API version (default: v5)
   --check-redis        Also check Redis pool data for sync issues
+  --no-onchain         Skip on-chain comparison
   --force              Show pool debug even if simulation succeeds`);
     process.exit(1);
   }
@@ -170,7 +399,7 @@ Options:
   let slippage = 50, sender = "", rpcUrl = "https://bsc-dataseed.bnbchain.org";
   let apiUrl = "https://api.cipheron.org";
   let depth = 3, splitCount = 5, providers = "PANCAKEV2,PANCAKEV3,UNISWAPV3,DODO,THENA";
-  let version = "v5", checkRedis = false, force = false;
+  let version = "v5", checkRedis = false, force = false, noOnchain = false;
 
   for (let i = 3; i < args.length; i++) {
     switch (args[i]) {
@@ -183,6 +412,7 @@ Options:
       case "--providers": providers = args[++i]; break;
       case "--version":   version = args[++i]; break;
       case "--check-redis": checkRedis = true; break;
+      case "--no-onchain": noOnchain = true; break;
       case "--force":     force = true; break;
     }
   }
@@ -192,10 +422,12 @@ Options:
   const amountIn = isRawWei ? BigInt(amountStr) : ethers.parseUnits(amountStr, srcDecimals);
   const isNative = from.toLowerCase() === WBNB;
 
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const rpcProvider = new ethers.JsonRpcProvider(rpcUrl);
   if (!sender) {
-    sender = await findSender(provider, from, amountIn, isNative);
+    sender = await findSender(rpcProvider, from, amountIn, isNative);
   }
+
+  const totalSteps = noOnchain ? 3 : 4;
 
   // Step 1: Run Peach quote
   console.log();
@@ -209,16 +441,16 @@ Options:
     ["Amount", `${fmtAmt(amountIn, from)} ${tokenLabel(from)}`],
     ["Sender", sender],
     ["API", apiUrl],
+    ["RPC", rpcUrl],
   ]);
   console.log();
 
-  console.log("[1/3] Running Peach quote + simulation...");
+  console.log(`[1/${totalSteps}] Running Peach quote + simulation...`);
   const result = await queryPeach(from, target, amountIn.toString(), 0, {
-    apiUrl, rpcUrl, sender, slippageBps: slippage, provider: provider, doSim: true,
+    apiUrl, rpcUrl, sender, slippageBps: slippage, provider: rpcProvider, doSim: true,
     depth, splitCount, providers, version,
   });
 
-  // Print quote result
   if (result.ok) {
     printKV([
       ["Quote", `${fmtAmt(result.amountOut, target)} ${tokenLabel(target)}`],
@@ -246,7 +478,6 @@ Options:
       });
     }
   } else if (result.routes.length > 0) {
-    // Fallback: use route info (less detailed)
     for (const r of result.routes) {
       routePoolIds.push({
         poolId: "",
@@ -268,9 +499,10 @@ Options:
   }
 
   // Step 2: Fetch pool debug info
-  console.log(`\n[2/3] Fetching pool debug for ${routePoolIds.length} pool(s)...\n`);
+  console.log(`\n[2/${totalSteps}] Fetching pool debug for ${routePoolIds.length} pool(s)...\n`);
 
   const allIssues: { poolId: string; provider: string; path: string; issues: string[] }[] = [];
+  const allDiffs: { poolId: string; provider: string; diffs: OnchainDiff[] }[] = [];
 
   for (const rp of routePoolIds) {
     if (!rp.poolId) {
@@ -289,7 +521,7 @@ Options:
     for (const dbg of debugInfos) {
       const issues = diagnosePool(dbg);
 
-      // Step 3: Optionally check Redis
+      // Redis check
       let redisIssues: string[] = [];
       if (checkRedis) {
         const redis = await fetchPoolRedis(apiUrl, rp.poolId, dbg.provider);
@@ -308,19 +540,17 @@ Options:
       console.log(`  │  ${tokenLabel(dbg.token0)}(${dbg.token0_decimals}) / ${tokenLabel(dbg.token1)}(${dbg.token1_decimals}) | fee=${dbg.fee}`);
       console.log(`  │  price: a→b=${dbg.price_a2b}  b→a=${dbg.price_b2a}`);
 
-      // Print provider-specific details
       const d = dbg.detail;
       if (d) {
         if (d.liquidity !== undefined) console.log(`  │  liquidity=${d.liquidity} tick=${d.tick} sqrtPrice=${d.sqrt_price_x96}`);
         if (d.reserve0 !== undefined) console.log(`  │  reserve0=${d.reserve0} reserve1=${d.reserve1}`);
         if (d.base_reserve !== undefined) console.log(`  │  baseReserve=${d.base_reserve} quoteReserve=${d.quote_reserve} k=${d.k}`);
         if (d.tick_count !== undefined) console.log(`  │  tick_count=${d.tick_count}`);
-        if (d.token0_is_honeypot || d.token1_is_honeypot) console.log(`  │  ⚠ HONEYPOT: t0=${d.token0_is_honeypot} t1=${d.token1_is_honeypot}`);
+        if (d.token0_is_honeypot || d.token1_is_honeypot) console.log(`  │  HONEYPOT: t0=${d.token0_is_honeypot} t1=${d.token1_is_honeypot}`);
         if (d.buy_tax !== undefined) console.log(`  │  buy_tax=${d.buy_tax} sell_tax=${d.sell_tax}`);
         if (d.unlocked !== undefined) console.log(`  │  unlocked=${d.unlocked}`);
       }
 
-      // Print edges
       for (const edge of dbg.edges) {
         console.log(`  │  edge: ${tokenLabel(edge.from)}→${tokenLabel(edge.target)} price=${edge.price} maxOut=${edge.max_amount_out}`);
       }
@@ -331,15 +561,79 @@ Options:
           console.log(`  │  ⚠ ${issue}`);
         }
       } else {
-        console.log(`  │  ✓ No obvious issues`);
+        console.log(`  │  ✓ No obvious issues in Peach data`);
       }
       console.log(`  └──────────────────────────────────────────`);
       console.log();
     }
   }
 
-  // Summary
-  console.log("[3/3] Diagnosis Summary");
+  // Step 3: On-chain comparison
+  if (!noOnchain) {
+    console.log(`[3/${totalSteps}] Comparing Peach data with on-chain state...\n`);
+
+    for (const rp of routePoolIds) {
+      if (!rp.poolId) continue;
+
+      const debugInfos = await fetchPoolDebug(apiUrl, rp.poolId, rp.provider);
+      for (const dbg of debugInfos) {
+        const providerUpper = dbg.provider.toUpperCase();
+        let diffs: OnchainDiff[] = [];
+
+        if (["PANCAKEV3", "UNISWAPV3", "THENA"].includes(providerUpper)) {
+          const onchain = await readV3Onchain(rpcProvider, rp.poolId);
+          if (onchain) {
+            diffs = compareV3WithOnchain(dbg, onchain);
+          } else {
+            console.log(`  ${dbg.provider} ${rp.poolId.slice(0, 16)}... — failed to read V3 on-chain state`);
+          }
+        } else if (providerUpper === "PANCAKEV2") {
+          const onchain = await readV2Onchain(rpcProvider, rp.poolId);
+          if (onchain) {
+            diffs = compareV2WithOnchain(dbg, onchain);
+          } else {
+            console.log(`  ${dbg.provider} ${rp.poolId.slice(0, 16)}... — failed to read V2 on-chain state`);
+          }
+        } else if (providerUpper === "DODO") {
+          const onchain = await readDODOOnchain(rpcProvider, rp.poolId);
+          if (onchain) {
+            diffs = compareDODOWithOnchain(dbg, onchain);
+          } else {
+            console.log(`  ${dbg.provider} ${rp.poolId.slice(0, 16)}... — failed to read DODO on-chain state`);
+          }
+        }
+
+        if (diffs.length > 0) {
+          allDiffs.push({ poolId: rp.poolId, provider: dbg.provider, diffs });
+
+          const hasCritical = diffs.some(d => d.critical);
+          console.log(`  ┌─ ${dbg.provider} | ${rp.poolId} ${hasCritical ? "⚠ DATA STALE" : "✓"}`);
+          printDiffTable(diffs);
+
+          // Add on-chain issues to allIssues
+          const staleFields = diffs.filter(d => d.critical);
+          if (staleFields.length > 0) {
+            const existing = allIssues.find(x => x.poolId === rp.poolId && x.provider === dbg.provider);
+            for (const sf of staleFields) {
+              const msg = `on-chain drift: ${sf.field} peach=${truncNum(sf.peach, 16)} vs chain=${truncNum(sf.onchain, 16)} (${sf.deviation})`;
+              if (existing) existing.issues.push(msg);
+            }
+          }
+          console.log(`  └──────────────────────────────────────────`);
+          console.log();
+        }
+      }
+    }
+
+    const totalStaleFields = allDiffs.reduce((sum, d) => sum + d.diffs.filter(x => x.critical).length, 0);
+    if (totalStaleFields === 0 && allDiffs.length > 0) {
+      console.log("  ✓ All pool data matches on-chain state.\n");
+    }
+  }
+
+  // Final summary
+  const summaryStep = noOnchain ? 3 : 4;
+  console.log(`[${summaryStep}/${totalSteps}] Diagnosis Summary`);
   console.log("───────────────────────────────────────────────────────");
 
   const poolsWithIssues = allIssues.filter(p => p.issues.length > 0);
@@ -347,7 +641,6 @@ Options:
     console.log("  No pool-level issues detected.");
     if (result.simStatus === "FAILED") {
       console.log("  Simulation failure may be caused by:");
-      console.log("    - On-chain state changed between quote and simulation");
       console.log("    - Slippage tolerance too tight");
       console.log("    - Router contract interaction issue");
       console.log("    - Token transfer restrictions not captured in pool data");
@@ -363,8 +656,18 @@ Options:
     }
   }
 
+  // On-chain summary
+  if (!noOnchain && allDiffs.length > 0) {
+    const stalePoolCount = allDiffs.filter(d => d.diffs.some(x => x.critical)).length;
+    if (stalePoolCount > 0) {
+      console.log(`  ⚠ ${stalePoolCount} pool(s) have stale data vs on-chain.`);
+      console.log("    This is likely the root cause of simulation failure.");
+      console.log("    The aggregator's cached pool state is out of date.\n");
+    }
+  }
+
   if (result.simError) {
-    console.log(`\n  Simulation error: ${result.simError}`);
+    console.log(`  Simulation error: ${result.simError}`);
   }
   console.log();
 }
