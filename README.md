@@ -128,12 +128,12 @@ npx peach-agg-tool fetch-tokens
 
 ### debug 命令详细
 
-`debug` 命令通过 Peach debug API（`/debug/pool`、`/debug/pool/redis`）检查池子状态，需要 `PEACH_DEBUG_TOKEN`。
+`debug` 命令通过 Peach debug API（`/agg/debug/pool`、`/agg/debug/pool/redis`）检查池子状态，需要 `PEACH_DEBUG_TOKEN`。
 
 执行 4 步诊断：
 
 1. 执行 Peach quote + simulation
-2. 拉取聚合器内存中的 pool 数据（`/debug/pool`）
+2. 拉取聚合器内存中的 pool 数据（`/agg/debug/pool`）
 3. 通过 RPC 读取链上真实状态，逐字段比对：
    - **V3 pools**: sqrtPriceX96, tick, liquidity
    - **V2 pools**: reserve0, reserve1
@@ -180,7 +180,7 @@ npx peach-agg-tool hop-sim BNB USDT 1.0 --threshold 10
 ```
 1. hop-sim           →  逐跳链上模拟，定位哪个 hop 有偏差
 2. debug --check-redis --force  →  比对内存/Redis/链上三层数据
-3. /debug/pool/swap API  →  用聚合器自身逻辑复现单跳计算
+3. /agg/debug/pool/swap API  →  用聚合器自身逻辑复现单跳计算
 4. tax-check <中间代币>  →  确认 transfer tax 或聚合器 bug
 ```
 

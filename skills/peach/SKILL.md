@@ -123,7 +123,7 @@ Analyzes a JSONL log file from `compare` and outputs:
 npx peach-agg-tool debug <from> <to> <amount> [options]
 ```
 
-Runs a Peach quote and, if simulation fails (or with `--force`), inspects every pool in the route via the aggregator's debug API (`/debug/pool`). Reports:
+Runs a Peach quote and, if simulation fails (or with `--force`), inspects every pool in the route via the aggregator's debug API (`/agg/debug/pool`). Reports:
 - Pool state: liquidity, reserves, prices, tick data
 - Honeypot detection flags
 - Per-token buy/sell tax rates (bps)
@@ -133,7 +133,7 @@ Runs a Peach quote and, if simulation fails (or with `--force`), inspects every 
 **Requires**: `PEACH_DEBUG_TOKEN` environment variable for debug API access.
 
 **Key options:**
-- `--check-redis` — also query `/debug/pool/redis` and compare with memory
+- `--check-redis` — also query `/agg/debug/pool/redis` and compare with memory
 - `--no-onchain` — skip on-chain comparison (faster, only check Peach internal state)
 - `--force` — show pool debug even if simulation succeeds
 - `--api <url>` — Peach API URL (must point to aggregator with debug endpoints)
@@ -255,7 +255,7 @@ Tokens can be specified by symbol (case-insensitive) or `0x` address:
 6. **Debug sim failure** (4-step workflow):
    - `hop-sim BNB USDT 1.0` → locate which hop deviates
    - `debug BNB USDT 1.0 --check-redis --force` → compare memory/Redis/on-chain data
-   - Use `/debug/pool/swap` API to reproduce single-hop calculation
+   - Use `/agg/debug/pool/swap` API to reproduce single-hop calculation
    - `tax-check <intermediate_tokens>` → verify token transfer tax
 7. **Inspect pools even on success**: `npx peach-agg-tool debug BNB USDT 1.0 --force`
 8. **Check token tax**: `npx peach-agg-tool tax-check VIN CAKE`
@@ -266,7 +266,7 @@ When a Peach quote has simulation failure or significant quote-vs-sim deviation,
 
 #### Step 1: Locate — which hop deviates?
 
-Run `hop-sim` to do per-hop on-chain simulation, plus use the aggregator's `/debug/pool/swap` API to simulate each hop with the aggregator's own math:
+Run `hop-sim` to do per-hop on-chain simulation, plus use the aggregator's `/agg/debug/pool/swap` API to simulate each hop with the aggregator's own math:
 
 ```bash
 npx peach-agg-tool hop-sim <from> <to> <amount>
@@ -274,7 +274,7 @@ npx peach-agg-tool hop-sim <from> <to> <amount>
 
 For each hop, compare three numbers:
 - **Quote amount_out**: what the routing engine calculated (from the route response)
-- **Aggregator pool/swap**: what the aggregator calculates with current in-memory data (`/debug/pool/swap`)
+- **Aggregator pool/swap**: what the aggregator calculates with current in-memory data (`/agg/debug/pool/swap`)
 - **On-chain simulation**: what actually happens on-chain (eth_call via RPC)
 
 | Quote ≠ pool/swap | Routing engine logic issue (split accumulation, DP cache, etc.) |
@@ -291,18 +291,18 @@ npx peach-agg-tool debug <from> <to> <amount> --check-redis --force
 ```
 
 This queries:
-- `/debug/pool` — aggregator in-memory state (reserves, sqrtPrice, tick, liquidity)
-- `/debug/pool/redis` — Redis cache state (check for memory↔Redis drift)
+- `/agg/debug/pool` — aggregator in-memory state (reserves, sqrtPrice, tick, liquidity)
+- `/agg/debug/pool/redis` — Redis cache state (check for memory↔Redis drift)
 - On-chain RPC — live chain state (getReserves, slot0, liquidity)
 
-Also check `/debug/pool/version` for `last_update_time` to directly assess data freshness.
+Also check `/agg/debug/pool/version` for `last_update_time` to directly assess data freshness.
 
 #### Step 3: Reproduce — single-pool swap simulation
 
-Use `/debug/pool/swap` to reproduce the exact calculation the aggregator would do for the problematic hop:
+Use `/agg/debug/pool/swap` to reproduce the exact calculation the aggregator would do for the problematic hop:
 
 ```
-GET /debug/pool/swap?pool_id=<addr>&provider=<name>&token_in=<addr>&token_out=<addr>&amount=<raw_amount>
+GET /agg/debug/pool/swap?pool_id=<addr>&provider=<name>&token_in=<addr>&token_out=<addr>&amount=<raw_amount>
 ```
 
 Compare the returned `amount_out` with:
@@ -315,7 +315,7 @@ This isolates whether the issue is in the pool math itself or in the routing/spl
 
 If data is fresh but simulation still fails:
 
-1. **Check token info** from aggregator cache: query `/debug/token` or `/debug/tokens` for all intermediate tokens in the route to see cached tax/honeypot flags
+1. **Check token info** from aggregator cache: query `/agg/debug/token` or `/agg/debug/tokens` for all intermediate tokens in the route to see cached tax/honeypot flags
 2. **On-chain tax detection**: run `tax-check` for tokens the aggregator reports as tax-free but that show simulation deviation:
    ```bash
    npx peach-agg-tool tax-check <intermediate_token_1> <intermediate_token_2> ...
@@ -329,14 +329,14 @@ All debug endpoints require `PEACH_DEBUG_TOKEN` and use base URL from `--api` (d
 
 | Endpoint | Purpose | Key Parameters |
 |----------|---------|---------------|
-| `GET /debug/pool` | Pool in-memory state + graph edges | `pool_id`, `provider` (opt) |
-| `GET /debug/pool/redis` | Raw Redis cache data | `pool_id`, `provider` |
-| `GET /debug/pool/swap` | Single-pool swap simulation | `pool_id`, `provider`, `token_in`, `token_out`, `amount` |
-| `GET /debug/pool/version` | Pool cache version & freshness | `pool_id`, `provider` |
-| `GET /debug/pool/ticks` | V3/Thena tick data (hex BCS) | `pool_id`, `provider` |
-| `GET /debug/token` | Token tax/honeypot info | `address` |
-| `GET /debug/tokens` | Batch token info | `addresses` (comma-separated) |
-| `GET /debug/route/refresh` | Force graph rebuild for pair | `from`, `target`, `depth` (opt) |
+| `GET /agg/debug/pool` | Pool in-memory state + graph edges | `pool_id`, `provider` (opt) |
+| `GET /agg/debug/pool/redis` | Raw Redis cache data | `pool_id`, `provider` |
+| `GET /agg/debug/pool/swap` | Single-pool swap simulation | `pool_id`, `provider`, `token_in`, `token_out`, `amount` |
+| `GET /agg/debug/pool/version` | Pool cache version & freshness | `pool_id`, `provider` |
+| `GET /agg/debug/pool/ticks` | V3/Thena tick data (hex BCS) | `pool_id`, `provider` |
+| `GET /agg/debug/token` | Token tax/honeypot info | `address` |
+| `GET /agg/debug/tokens` | Batch token info | `addresses` (comma-separated) |
+| `GET /agg/debug/route/refresh` | Force graph rebuild for pair | `from`, `target`, `depth` (opt) |
 
 ## Logs
 

@@ -105,7 +105,7 @@ function debugHeaders(debugToken?: string): Record<string, string> {
 async function fetchPoolDebug(apiUrl: string, poolId: string, provider?: string, debugToken?: string): Promise<PoolDebugResponse[]> {
   const params = new URLSearchParams({ pool_id: poolId });
   if (provider) params.set("provider", provider);
-  const url = `${apiUrl}/debug/pool?${params}`;
+  const url = `${apiUrl}/agg/debug/pool?${params}`;
   try {
     const resp = await fetch(url, { headers: debugHeaders(debugToken), signal: AbortSignal.timeout(10000) });
     const json = await resp.json() as any;
@@ -120,7 +120,7 @@ async function fetchPoolDebug(apiUrl: string, poolId: string, provider?: string,
 
 async function fetchPoolRedis(apiUrl: string, poolId: string, provider: string, debugToken?: string): Promise<PoolRedisResponse | null> {
   const params = new URLSearchParams({ pool_id: poolId, provider });
-  const url = `${apiUrl}/debug/pool/redis?${params}`;
+  const url = `${apiUrl}/agg/debug/pool/redis?${params}`;
   try {
     const resp = await fetch(url, { headers: debugHeaders(debugToken), signal: AbortSignal.timeout(10000) });
     const json = await resp.json() as any;
