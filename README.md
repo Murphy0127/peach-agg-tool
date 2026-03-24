@@ -39,7 +39,7 @@ console.log('peach@npm v' + ver + ' registered and enabled');
 
 重启 Claude Code 或在会话中执行 `/reload-plugins` 即可使用。
 
-### 2. 配置 OKX 凭证（可选）
+### 2. 配置凭证（可选）
 
 ```bash
 cp "$(npm root -g)/peach-agg-tool/skills/peach/.env.example" \
@@ -47,7 +47,15 @@ cp "$(npm root -g)/peach-agg-tool/skills/peach/.env.example" \
 vim "$(npm root -g)/peach-agg-tool/skills/peach/.env"
 ```
 
+`.env` 支持的变量：
+
+| 变量 | 用途 | 必须？ |
+|------|------|--------|
+| `OKX_API_KEY` / `OKX_SECRET_KEY` / `OKX_PASSPHRASE` / `OKX_PROJECT_ID` | OKX 聚合器对比 | `--agg all` 时需要 |
+| `PEACH_DEBUG_TOKEN` | Peach debug API 认证 | `debug` 命令的池子检查需要 |
+
 不配置 OKX 凭证也可以使用 Peach-only 功能（`--agg peach`、`debug`、`analyze`）。
+不配置 `PEACH_DEBUG_TOKEN` 也能跑 debug，但无法查看聚合器内存/Redis 池子数据。
 
 ## 更新
 
@@ -120,10 +128,12 @@ npx peach-agg-tool fetch-tokens
 
 ### debug 命令详细
 
-`debug` 命令执行 4 步诊断：
+`debug` 命令通过 Peach debug API（`/debug/pool`、`/debug/pool/redis`）检查池子状态，需要 `PEACH_DEBUG_TOKEN`。
+
+执行 4 步诊断：
 
 1. 执行 Peach quote + simulation
-2. 拉取聚合器内存中的 pool 数据（`/router/pool_debug`）
+2. 拉取聚合器内存中的 pool 数据（`/debug/pool`）
 3. 通过 RPC 读取链上真实状态，逐字段比对：
    - **V3 pools**: sqrtPriceX96, tick, liquidity
    - **V2 pools**: reserve0, reserve1
@@ -165,12 +175,13 @@ npx peach-agg-tool hop-sim BNB USDT 1.0 --full-sim
 npx peach-agg-tool hop-sim BNB USDT 1.0 --threshold 10
 ```
 
-**推荐排查流程：**
+**系统化排查流程（4 步）：**
 
 ```
-hop-sim --full-sim  →  定位哪个 hop 有偏差
-    ↓ 所有 hop 正常但 full sim 失败
-tax-check <中间代币>  →  确认 transfer tax
+1. hop-sim           →  逐跳链上模拟，定位哪个 hop 有偏差
+2. debug --check-redis --force  →  比对内存/Redis/链上三层数据
+3. /debug/pool/swap API  →  用聚合器自身逻辑复现单跳计算
+4. tax-check <中间代币>  →  确认 transfer tax 或聚合器 bug
 ```
 
 ### tax-check 命令详细
@@ -197,7 +208,7 @@ npx peach-agg-tool tax-check VIN --amount 0.1
 **典型排查流程：**
 
 ```
-quote (模拟失败) → debug (pool 正常) → tax-check (发现中间 token 有税)
+quote (模拟失败) → hop-sim (定位偏差跳) → debug --check-redis (比对数据) → tax-check (排查 token 税)
 ```
 
 ## 卸载
