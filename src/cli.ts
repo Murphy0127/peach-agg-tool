@@ -128,6 +128,12 @@ async function main() {
   const rest = filteredArgs.slice(1);
 
   if (!cmd || cmd === "-h" || cmd === "--help") { printHelp(); process.exit(0); }
+  if (cmd === "-v" || cmd === "--version") {
+    const { createRequire } = await import("module");
+    const pkg = createRequire(import.meta.url)("../package.json");
+    console.log(pkg.version);
+    process.exit(0);
+  }
 
   // Load OKX credentials for commands that need them
   if (cmd !== "analyze" && cmd !== "fetch-tokens") {
