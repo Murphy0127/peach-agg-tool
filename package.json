@@ -1,6 +1,6 @@
 {
   "name": "peach-agg-tool",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "CLI tool for comparing Peach and OKX DEX aggregators on BSC",
   "type": "module",
   "bin": {
@@ -10,6 +10,7 @@
     "dist",
     "data",
     "skills",
+    "!skills/peach/.env",
     ".claude-plugin"
   ],
   "scripts": {

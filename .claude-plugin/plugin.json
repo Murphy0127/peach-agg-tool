@@ -1,6 +1,6 @@
 {
   "name": "peach",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Peach DEX aggregator tools - quote, compare, and analyze swap routes on BSC",
   "author": {
     "name": "Peach Team"
