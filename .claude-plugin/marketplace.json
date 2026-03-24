@@ -1,11 +1,11 @@
 {
-  "name": "npm",
-  "description": "Peach aggregator tools plugin (installed via npm)",
+  "name": "peach-agg-tool",
+  "description": "Peach DEX aggregator testing and comparison tool for BSC",
   "plugins": [
     {
       "name": "peach",
-      "description": "Peach DEX aggregator tools - quote, compare, and analyze swap routes on BSC",
-      "version": "0.4.0",
+      "description": "Peach DEX aggregator tools - quote, compare, debug, and analyze swap routes on BSC",
+      "version": "0.5.3",
       "source": "./"
     }
   ]
