@@ -84,6 +84,12 @@ npx peach-agg-tool analyze /tmp/aggregator/compare-xxx.jsonl
 # OKX DEX 分布统计
 npx peach-agg-tool dex-stats --duration 10
 
+# 逐跳模拟分析（定位报价偏差）
+npx peach-agg-tool hop-sim BNB USDT 1.0 --full-sim
+
+# 检测 token 转账税
+npx peach-agg-tool tax-check VIN LTC CAKE
+
 # 刷新 token 数据
 npx peach-agg-tool fetch-tokens
 ```
@@ -106,6 +112,8 @@ npx peach-agg-tool fetch-tokens
 | `quote <from> <to> <amount>` | 单次报价对比 + 模拟交易 |
 | `compare` | 持续多轮随机对比 |
 | `debug <from> <to> <amount>` | 诊断模拟失败（Peach 内存 + 链上比对） |
+| `hop-sim <from> <to> <amount>` | 逐跳链上模拟对比，定位报价偏差 |
+| `tax-check <token> [token2 ...]` | 纯链上检测 token 转账税（不依赖 Peach） |
 | `dex-stats` | OKX DEX 使用分布统计 |
 | `analyze <log.jsonl>` | 分析 compare 日志 |
 | `fetch-tokens` | 刷新 BSC token 数据 |
@@ -136,6 +144,60 @@ npx peach-agg-tool debug BNB USDT 1.0 --force
 
 # 跳过链上比对（更快）
 npx peach-agg-tool debug BNB USDT 1.0 --no-onchain
+```
+
+### hop-sim 命令详细
+
+`hop-sim` 逐跳模拟 Peach 的报价路由，将每一跳的 Peach 预测输出与链上实际计算结果对比：
+
+- **V2 pools**: 读取 `getReserves()` + 恒等积公式计算
+- **V3 pools**: 调用 QuoterV2 的 `quoteExactInputSingle()` 做真实 tick 遍历
+- **DODO pools**: 调用 `querySellBase()`/`querySellQuote()`
+
+```bash
+# 基本用法
+npx peach-agg-tool hop-sim BNB USDT 1.0
+
+# 同时跑完整路由模拟，自动判断是 stale data 还是 transfer tax
+npx peach-agg-tool hop-sim BNB USDT 1.0 --full-sim
+
+# 自定义偏差阈值（10 bps = 0.1%）
+npx peach-agg-tool hop-sim BNB USDT 1.0 --threshold 10
+```
+
+**推荐排查流程：**
+
+```
+hop-sim --full-sim  →  定位哪个 hop 有偏差
+    ↓ 所有 hop 正常但 full sim 失败
+tax-check <中间代币>  →  确认 transfer tax
+```
+
+### tax-check 命令详细
+
+`tax-check` 通过纯链上模拟检测 token 的隐藏转账税，完全不依赖 Peach：
+
+1. 通过 PancakeV2 Router 的 `swapExactETHForTokensSupportingFeeOnTransferTokens` 买入 token
+2. 对比 `getAmountsOut`（无税预期）vs `balanceOf`（实际到手）→ **Buy tax**
+3. 将一半 token 转给 `address(0xdead)`，对比发送量 vs 接收量 → **Transfer tax**
+
+整个过程在单次 `eth_call` 中通过部署临时合约完成，无需消耗 gas。
+
+```bash
+# 检测单个 token
+npx peach-agg-tool tax-check 0x85E43bF8faAF04ceDdcD03d6C07438b72606a988
+
+# 批量检测
+npx peach-agg-tool tax-check VIN LTC CAKE
+
+# 用更大金额测试（防止小额豁免）
+npx peach-agg-tool tax-check VIN --amount 0.1
+```
+
+**典型排查流程：**
+
+```
+quote (模拟失败) → debug (pool 正常) → tax-check (发现中间 token 有税)
 ```
 
 ## 卸载

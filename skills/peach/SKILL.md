@@ -139,6 +139,68 @@ npx peach-agg-tool debug 0x... 0x... 1000000000000000000 --api http://localhost:
 - Summary: which pools have problems and likely root cause
 - Common failure causes: honeypot tokens, zero liquidity, stale data, tick mismatch, Redis sync issues
 
+### hop-sim - Per-hop on-chain simulation analysis
+
+```bash
+npx peach-agg-tool hop-sim <from> <to> <amount> [options]
+```
+
+Fetches a Peach quote, then independently simulates each hop on-chain using:
+- **V2 pools**: `getReserves()` + constant-product formula
+- **V3 pools**: QuoterV2 `quoteExactInputSingle()`
+- **DODO pools**: `querySellBase()`/`querySellQuote()`
+
+Compares Peach's predicted `amount_out` per hop vs actual on-chain result.
+Also detects route splits and amount flow continuity.
+
+**Key options:**
+- `--threshold <bps>` — deviation alert threshold (default: 50 = 0.5%)
+- `--full-sim` — also run full route simulation at the end
+- Other options same as `debug` (--rpc, --api, --depth, --split)
+
+**Examples:**
+```bash
+npx peach-agg-tool hop-sim BNB USDT 1.0
+npx peach-agg-tool hop-sim BNB USDT 1.0 --full-sim --threshold 10
+```
+
+**Output includes:**
+- Per-hop comparison table: Peach Out vs On-chain Out, deviation %, status
+- Route split detection (e.g., "Hop 2 uses 40% of Hop 1's output")
+- Diagnosis: stale data, sim failures, or "all hops match → likely transfer tax"
+- When `--full-sim` is used: if per-hop is correct but full sim fails, suggests `tax-check` on intermediate tokens
+
+### tax-check - Detect token transfer tax
+
+```bash
+npx peach-agg-tool tax-check <token> [token2 ...] [options]
+```
+
+Detects token transfer tax via pure on-chain simulation — completely independent of Peach.
+Deploys a helper contract via `eth_call` that buys the token through PancakeV2 Router (FeeOnTransfer variant),
+compares `getAmountsOut` (expected, no tax) vs actual `balanceOf` (received), then transfers half to measure transfer tax.
+
+**Key options:**
+- `--rpc <url>` — BSC RPC endpoint
+- `--amount <bnb>` — BNB amount for test swap (default: 0.01)
+
+**Examples:**
+```bash
+npx peach-agg-tool tax-check VIN LTC CAKE
+npx peach-agg-tool tax-check 0x85E43bF8faAF04ceDdcD03d6C07438b72606a988 --amount 0.1
+```
+
+**Output includes:**
+- Buy tax: `getAmountsOut` expected vs actual received (buy from PancakeV2 pool)
+- Transfer tax: amount sent vs amount received by target address
+- Tax rates in basis points and percentage
+- Summary table when checking multiple tokens
+
+**When to use:**
+- After `debug` shows "No pool-level issues" but simulation still fails — check if intermediate tokens have hidden tax
+- When Peach quote is significantly higher than simulation result
+- To verify whether a token is safe to route through as an intermediate hop
+
 ### fetch-tokens - Refresh token data
 
 ```bash
@@ -179,6 +241,16 @@ Tokens can be specified by symbol (case-insensitive) or `0x` address:
 5. **Check DEX coverage**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env dex-stats --duration 10`
 6. **Debug sim failure**: `npx peach-agg-tool debug USDT BNB 100 --check-redis`
 7. **Inspect pools even on success**: `npx peach-agg-tool debug BNB USDT 1.0 --force`
+8. **Check token tax**: `npx peach-agg-tool tax-check VIN CAKE`
+
+### Debugging workflow: hop-sim → tax-check
+
+When a Peach simulation fails:
+1. Run `hop-sim --full-sim` to compare each hop's Peach output vs on-chain
+2. If specific hops show deviation: stale pool data is the cause
+3. If all hops match but full sim fails: transfer tax on intermediate tokens
+4. Run `tax-check` on flagged intermediate tokens to confirm and measure tax rate
+5. Use `debug --check-redis` for deeper pool-level inspection if needed
 
 ## Logs
 

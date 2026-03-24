@@ -7,6 +7,8 @@
  *   compare       Continuous multi-round comparison
  *   dex-stats     OKX DEX usage distribution
  *   analyze       Analyze compare logs
+ *   hop-sim       Per-hop on-chain simulation analysis
+ *   tax-check     Detect token transfer tax (on-chain)
  *   fetch-tokens  Refresh BSC token data
  *
  * Usage:
@@ -33,6 +35,8 @@ Commands:
   dex-stats [options]               OKX DEX usage distribution
   analyze <log.jsonl>               Analyze compare logs
   debug <from> <target> <amount>    Diagnose Peach simulation failures
+  hop-sim <from> <target> <amount> Per-hop on-chain simulation analysis
+  tax-check <token> [token2 ...]   Detect token transfer tax (on-chain)
   fetch-tokens [options]            Refresh BSC token data from GeckoTerminal
 
 quote options:
@@ -73,6 +77,18 @@ debug options:
   --check-redis        Also check Redis data for sync issues
   --force              Show pool debug even if simulation succeeds
 
+hop-sim options:
+  --rpc <url>          BSC RPC URL
+  --api <url>          Peach API URL
+  --depth <n>          Search depth (default: 3)
+  --split <n>          Split count (default: 5)
+  --threshold <bps>    Deviation alert threshold (default: 50 = 0.5%)
+  --full-sim           Also run full route simulation
+
+tax-check options:
+  --rpc <url>          BSC RPC URL
+  --amount <bnb>       BNB amount for test swap (default: 0.1)
+
 fetch-tokens options:
   --top <n>            Number of tokens to keep (default: 100)
   --pages <n>          Pool pages to fetch (default: 8)
@@ -86,6 +102,10 @@ Examples:
   npx peach-agg-tool analyze /tmp/aggregator/compare-xxx.jsonl
   npx peach-agg-tool debug BNB USDT 1.0
   npx peach-agg-tool debug USDT BNB 100 --check-redis --force
+  npx peach-agg-tool hop-sim BNB USDT 1.0
+  npx peach-agg-tool hop-sim BNB USDT 1.0 --full-sim
+  npx peach-agg-tool tax-check VIN LTC CAKE
+  npx peach-agg-tool tax-check 0x85E43bF8... --amount 0.1
   npx peach-agg-tool fetch-tokens --top 50
 `);
 }
@@ -138,6 +158,16 @@ async function main() {
     case "debug": {
       const { cmdDebug } = await import("./commands/debug.js");
       await cmdDebug(rest);
+      break;
+    }
+    case "hop-sim": {
+      const { cmdHopSim } = await import("./commands/hop-sim.js");
+      await cmdHopSim(rest);
+      break;
+    }
+    case "tax-check": {
+      const { cmdTaxCheck } = await import("./commands/tax-check.js");
+      await cmdTaxCheck(rest);
       break;
     }
     case "fetch-tokens": {
