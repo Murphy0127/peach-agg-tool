@@ -11,9 +11,9 @@ Install: `npm install -g peach-agg-tool` or use directly via `npx peach-agg-tool
 
 ## OKX Credentials
 
-OKX API credentials are configured in `${CLAUDE_SKILL_DIR}/.env`. If the file does not exist, copy the template:
+OKX API credentials are configured in `~/.config/peach-agg-tool/.env`. If the file does not exist, copy the template:
 ```bash
-cp ${CLAUDE_SKILL_DIR}/.env.example ${CLAUDE_SKILL_DIR}/.env
+cp ~/.config/peach-agg-tool/.env.example ~/.config/peach-agg-tool/.env
 ```
 
 Then fill in the credentials:
@@ -26,7 +26,7 @@ OKX_PROJECT_ID="..."
 
 **IMPORTANT**: Always pass the env file so that OKX credentials and debug token are available:
 ```bash
-npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env <command> [options]
+npx peach-agg-tool --env-file ~/.config/peach-agg-tool/.env <command> [options]
 ```
 
 Without the env file:
@@ -34,9 +34,9 @@ Without the env file:
 - `debug` command won't be able to inspect pool state (requires `PEACH_DEBUG_TOKEN`)
 - Peach-only commands (`quote --agg peach`, `analyze`, `fetch-tokens`, `hop-sim`, `tax-check`) still work
 
-If `${CLAUDE_SKILL_DIR}/.env` does not exist, copy the template and fill in credentials:
+If `~/.config/peach-agg-tool/.env` does not exist, copy the template and fill in credentials:
 ```bash
-cp ${CLAUDE_SKILL_DIR}/.env.example ${CLAUDE_SKILL_DIR}/.env
+cp ~/.config/peach-agg-tool/.env.example ~/.config/peach-agg-tool/.env
 ```
 
 ## Peach Debug API Credentials
@@ -47,7 +47,7 @@ The `debug` command uses Peach aggregator's debug API endpoints which require Be
 PEACH_DEBUG_TOKEN="..."
 ```
 
-Add it to `${CLAUDE_SKILL_DIR}/.env` alongside OKX credentials, or set it in the shell environment.
+Add it to `~/.config/peach-agg-tool/.env` alongside OKX credentials, or set it in the shell environment.
 
 **Without `PEACH_DEBUG_TOKEN`**, the `debug` command will still run quotes and on-chain comparisons, but pool inspection (memory state, Redis comparison, single-pool swap simulation) will return empty results.
 
@@ -72,9 +72,9 @@ Queries one or both aggregators, displays quoted output amounts, swap routes, an
 
 **Examples:**
 ```bash
-npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 1.0
+npx peach-agg-tool --env-file ~/.config/peach-agg-tool/.env quote BNB USDT 1.0
 npx peach-agg-tool quote USDT BNB 100 --agg peach
-npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 0.1 --depth 5 --split 10
+npx peach-agg-tool --env-file ~/.config/peach-agg-tool/.env quote BNB USDT 0.1 --depth 5 --split 10
 ```
 
 ### compare - Continuous benchmarking
@@ -94,8 +94,8 @@ Runs multiple rounds with random token pairs and trade sizes, comparing both agg
 
 **Examples:**
 ```bash
-npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --duration 30 --min-usd 1000 --max-usd 100000
-npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --no-sim --duration 10
+npx peach-agg-tool --env-file ~/.config/peach-agg-tool/.env compare --duration 30 --min-usd 1000 --max-usd 100000
+npx peach-agg-tool --env-file ~/.config/peach-agg-tool/.env compare --no-sim --duration 10
 ```
 
 Output: JSONL log at `/tmp/aggregator/compare-<timestamp>.jsonl`
@@ -253,11 +253,11 @@ Tokens can be specified by symbol (case-insensitive) or `0x` address:
 
 ## Common Workflows
 
-1. **Quick price check**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env quote BNB USDT 1.0`
+1. **Quick price check**: `npx peach-agg-tool --env-file ~/.config/peach-agg-tool/.env quote BNB USDT 1.0`
 2. **Peach-only** (no OKX creds needed): `npx peach-agg-tool quote BNB USDT 10 --agg peach --depth 5 --split 10`
-3. **Short benchmark**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env compare --duration 5 --interval 5`
+3. **Short benchmark**: `npx peach-agg-tool --env-file ~/.config/peach-agg-tool/.env compare --duration 5 --interval 5`
 4. **Analyze results**: Find latest log in `/tmp/aggregator/` and run `npx peach-agg-tool analyze <file>`
-5. **Check DEX coverage**: `npx peach-agg-tool --env-file ${CLAUDE_SKILL_DIR}/.env dex-stats --duration 10`
+5. **Check DEX coverage**: `npx peach-agg-tool --env-file ~/.config/peach-agg-tool/.env dex-stats --duration 10`
 6. **Debug sim failure** (4-step workflow):
    - `hop-sim BNB USDT 1.0` → locate which hop deviates
    - `debug BNB USDT 1.0 --check-redis --force` → compare memory/Redis/on-chain data

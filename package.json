@@ -1,6 +1,6 @@
 {
   "name": "peach-agg-tool",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "CLI tool for comparing Peach and OKX DEX aggregators on BSC",
   "type": "module",
   "bin": {

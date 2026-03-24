@@ -27,7 +27,7 @@ Usage:
 
 Global options:
   --env-file <path>    Path to .env file with OKX credentials
-                       Default search: skills/peach/.env > ~/.okx/.env
+                       Default: ~/.config/peach-agg-tool/.env > ~/.okx/.env
 
 Commands:
   quote <from> <target> <amount>    Single pair quote (use --agg all to compare)

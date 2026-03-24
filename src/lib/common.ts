@@ -23,7 +23,7 @@ export function loadEnvFile(filePath: string) {
 }
 
 export function loadOkxEnv(envFilePath?: string) {
-  // Priority: explicit path > skill dir .env > ~/.okx/.env
+  // Priority: explicit path > ~/.config/peach-agg-tool/.env > ~/.okx/.env
   if (envFilePath) {
     if (!fs.existsSync(envFilePath)) {
       console.error(`Env file not found: ${envFilePath}`);
@@ -33,16 +33,11 @@ export function loadOkxEnv(envFilePath?: string) {
     return;
   }
 
-  // Search for .env in the skill directory (relative to package root)
-  const currentDir = path.dirname(new URL(import.meta.url).pathname);
-  let dir = currentDir;
-  for (let i = 0; i < 5; i++) {
-    const candidate = path.join(dir, "skills", "peach", ".env");
-    if (fs.existsSync(candidate)) {
-      loadEnvFile(candidate);
-      return;
-    }
-    dir = path.dirname(dir);
+  // Default: ~/.config/peach-agg-tool/.env
+  const configEnv = path.join(os.homedir(), ".config", "peach-agg-tool", ".env");
+  if (fs.existsSync(configEnv)) {
+    loadEnvFile(configEnv);
+    return;
   }
 
   // Fallback: ~/.okx/.env
@@ -61,7 +56,7 @@ export function proxyFetch(url: string, init?: Parameters<typeof undiciFetch>[1]
 export function getOkxCreds() {
   const { OKX_API_KEY: apiKey, OKX_SECRET_KEY: secretKey, OKX_PASSPHRASE: passphrase, OKX_PROJECT_ID: projectId } = process.env;
   if (!apiKey || !secretKey || !passphrase || !projectId) {
-    throw new Error("Missing OKX credentials (OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE, OKX_PROJECT_ID). Configure in skills/peach/.env or use --env-file");
+    throw new Error("Missing OKX credentials (OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE, OKX_PROJECT_ID). Configure in ~/.config/peach-agg-tool/.env or use --env-file");
   }
   return { apiKey, secretKey, passphrase, projectId };
 }

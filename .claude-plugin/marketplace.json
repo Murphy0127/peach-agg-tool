@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Peach DEX aggregator testing and comparison tool for BSC",
-    "version": "0.5.3"
+    "version": "0.5.4"
   },
   "plugins": [
     {
