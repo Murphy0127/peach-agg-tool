@@ -5,7 +5,7 @@
 import { ethers } from "ethers";
 import { PeachClient, BSC_MAINNET_CONFIG } from "@pagg/aggregator-sdk";
 import type { Quote } from "@pagg/aggregator-sdk";
-import { decodeRevert, WBNB, type AggResult, emptyResult } from "./common.js";
+import { decodeRevert, WBNB, buildErc20StateOverrides, type AggResult, emptyResult } from "./common.js";
 import { tokenLabel } from "./tokens.js";
 
 export interface PeachQueryOpts {
@@ -96,7 +96,7 @@ export async function queryPeach(
         const routerAddress = quote.routerAddress ?? config.routerAddress;
         const stateOverrides = isNative
           ? undefined
-          : client.buildStateOverrides(fromAddr, opts.sender, routerAddress, BigInt(amount) * 2n);
+          : buildErc20StateOverrides(fromAddr, opts.sender, routerAddress, BigInt(amount) * 2n);
 
         const sim = await client.simulate(quote, opts.slippageBps, opts.sender, stateOverrides);
         result.simLatencyMs = Date.now() - simStart;
