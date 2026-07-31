@@ -55,7 +55,10 @@ compare options:
   --interval <sec>     Interval between rounds (default: 10)
   --min-usd <n>        Min trade size in USD (default: 10000)
   --max-usd <n>        Max trade size in USD (default: 1000000)
-  --slippage <bps>     Slippage in bps (default: 50)
+  --seed <n>           Deterministic case seed (default: 42)
+  --rounds <n>         Stop after exactly N rounds
+  --cases <path>       Fixed JSON case set (e.g. aggregator test/v8/cases.json)
+  --slippage <bps>     Slippage in bps (default: 1000)
   --no-sim             Skip simulation
   --out <dir>          Output directory (default: /tmp/aggregator)
   --rpc <url>          BSC RPC URL

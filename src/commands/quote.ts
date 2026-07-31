@@ -124,7 +124,7 @@ Options:
         isNative ? NATIVE_TOKEN : from,
         target.toLowerCase() === WBNB ? NATIVE_TOKEN : target,
         amountIn.toString(), 0,
-        { sender, slippageBps: slippage, provider, doSim, dexIds },
+        { sender, slippageBps: slippage, provider, rpcUrl, doSim, dexIds },
       );
       results.push(r);
       console.error(`[${r.name}] ${r.ok ? r.latencyMs + "ms" : "FAILED: " + r.error?.slice(0, 60)}`);

@@ -5,13 +5,15 @@
 import { ethers } from "ethers";
 import {
   proxyFetch, okxHeaders, getOkxApproveSpender, buildErc20StateOverrides,
-  decodeRevert, NATIVE_TOKEN, type AggResult, emptyResult,
+  decodeRevert, deviationPct, ethSimulateWithLogs, extractTokenOutput, extractNativeOutput,
+  NATIVE_TOKEN, WBNB, type AggResult, emptyResult,
 } from "./common.js";
 
 export interface OkxQueryOpts {
   sender: string;
   slippageBps: number;
   provider: ethers.JsonRpcProvider;
+  rpcUrl: string;
   doSim: boolean;
   /** OKX DEX IDs filter */
   dexIds?: string;
@@ -80,33 +82,27 @@ export async function queryOkx(
       const simStart = Date.now();
       try {
         const isFromNative = fromAddr.toLowerCase() === NATIVE_TOKEN;
-        let callResult: string;
-
+        let stateOverrides: Record<string, { stateDiff: Record<string, string> }> | undefined;
         if (!isFromNative) {
           const spender = await getOkxApproveSpender();
-          const stateOverrides = buildErc20StateOverrides(
+          stateOverrides = buildErc20StateOverrides(
             fromAddr, opts.sender, spender, BigInt(amount) * 2n,
           );
-          const valueHex = BigInt(tx.value || "0") > 0n ? '0x' + BigInt(tx.value).toString(16) : undefined;
-          callResult = await opts.provider.send('eth_call', [
-            { from: opts.sender, to: tx.to, data: tx.data, value: valueHex },
-            'latest', stateOverrides,
-          ]);
-        } else {
-          callResult = await opts.provider.call({
-            from: opts.sender, to: tx.to, data: tx.data,
-            value: BigInt(tx.value || "0"), gasLimit: BigInt(tx.gas || "500000") * 3n,
-          });
         }
-
+        const valueHex = BigInt(tx.value || "0") > 0n ? `0x${BigInt(tx.value).toString(16)}` : undefined;
+        const simulation = await ethSimulateWithLogs(
+          opts.rpcUrl, opts.sender, tx.to, tx.data, valueHex, stateOverrides,
+        );
         result.simLatencyMs = Date.now() - simStart;
+        if (!simulation.success) throw new Error(simulation.error ?? "simulation reverted");
+        const output = toAddr.toLowerCase() === NATIVE_TOKEN
+          ? extractNativeOutput(simulation.logs, WBNB)
+          : extractTokenOutput(simulation.logs, toAddr, opts.sender);
+        if (output === null) throw new Error("simulation_unavailable: output Transfer log not found");
         result.simStatus = "SUCCESS";
-        if (callResult.length >= 66) {
-          const ret = BigInt("0x" + callResult.slice(2, 66));
-          if (ret > 0n) result.simAmountOut = ret;
-        }
+        result.simAmountOut = output;
         if (result.simAmountOut > 0n && toAmountRaw > 0n) {
-          result.simDeviationPct = Number((result.simAmountOut - toAmountRaw) * 10000n / toAmountRaw) / 100;
+          result.simDeviationPct = deviationPct(result.simAmountOut, toAmountRaw);
         }
       } catch (err: any) {
         result.simLatencyMs = Date.now() - simStart;

@@ -5,7 +5,7 @@
 import { ethers } from "ethers";
 import { PeachClient, BSC_MAINNET_CONFIG } from "@peachprojects/aggregator-sdk";
 import type { Quote } from "@peachprojects/aggregator-sdk";
-import { decodeRevert, WBNB, buildErc20StateOverrides, type AggResult, emptyResult } from "./common.js";
+import { decodeRevert, deviationPct, WBNB, buildErc20StateOverrides, type AggResult, emptyResult } from "./common.js";
 import { tokenLabel } from "./tokens.js";
 
 export interface PeachQueryOpts {
@@ -108,7 +108,7 @@ export async function queryPeach(
         result.simStatus = "SUCCESS";
         result.simAmountOut = sim.amountOut;
         if (result.simAmountOut > 0n && quote.amountOut > 0n) {
-          result.simDeviationPct = Number((result.simAmountOut - quote.amountOut) * 10000n / quote.amountOut) / 100;
+          result.simDeviationPct = deviationPct(result.simAmountOut, quote.amountOut);
         }
       } catch (err: any) {
         result.simLatencyMs = Date.now() - simStart;

@@ -72,6 +72,14 @@ npx peach-agg-tool quote BNB USDT 1.0 --agg all
 # 持续对比跑 30 分钟
 npx peach-agg-tool compare --duration 30 --min-usd 1000
 
+# 使用固定 Case 可复现地对比 agg-test 与 OKX
+npx peach-agg-tool compare \
+  --env test \
+  --cases /path/to/cases.json \
+  --rounds 320 \
+  --seed 42 \
+  --slippage 50
+
 # 诊断模拟失败（含链上数据比对）
 npx peach-agg-tool debug BNB USDT 1.0
 npx peach-agg-tool debug USDT BNB 100 --check-redis --force
@@ -115,6 +123,11 @@ npx peach-agg-tool fetch-tokens
 | `dex-stats` | OKX DEX 使用分布统计 |
 | `analyze <log.jsonl>` | 分析 compare 日志 |
 | `fetch-tokens` | 刷新 BSC token 数据 |
+
+`compare --cases` 支持 Aggregator `test/v8/cases.json` 格式。对比日志保留有符号的
+quote-to-simulation 滑点，并同时统计 Peach/OKX 正滑点比例以及“Peach 吃掉全部
+正滑点”的假设结果。OKX 模拟使用 `eth_simulateV1` 的 Transfer logs 提取实际到账量；
+RPC 不支持时会标记模拟不可用，不会用 ABI 返回值猜测。
 
 ### debug 命令详细
 

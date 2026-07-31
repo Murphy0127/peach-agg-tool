@@ -73,6 +73,100 @@ export function proxyFetch(url: string, init?: Parameters<typeof undiciFetch>[1]
   return undiciFetch(url, { ...init, dispatcher });
 }
 
+// ── Transaction simulation with logs ─────────────────────────────────────
+export interface SimulationLog {
+  address: string;
+  topics: string[];
+  data: string;
+}
+
+export interface SimulationResult {
+  success: boolean;
+  returnData: string;
+  gasUsed: number;
+  logs: SimulationLog[];
+  error?: string;
+}
+
+const TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)").toLowerCase();
+const WITHDRAWAL_TOPIC = ethers.id("Withdrawal(address,uint256)").toLowerCase();
+
+/** Simulate a transaction and retain event logs. RPCs without eth_simulateV1
+ * deliberately return an unavailable result instead of guessing amountOut from
+ * an ABI return word, which is not a stable router contract interface. */
+export async function ethSimulateWithLogs(
+  rpcUrl: string,
+  from: string,
+  to: string,
+  data: string,
+  value?: string,
+  stateOverrides?: Record<string, { stateDiff: Record<string, string> }>,
+): Promise<SimulationResult> {
+  try {
+    const call: Record<string, string> = { from, to, data };
+    if (value && value !== "0" && value !== "0x0") call.value = value;
+    const blockStateCall: Record<string, unknown> = { calls: [call] };
+    if (stateOverrides && Object.keys(stateOverrides).length > 0) {
+      blockStateCall.stateOverrides = stateOverrides;
+    }
+    const resp = await proxyFetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1, method: "eth_simulateV1",
+        params: [{ blockStateCalls: [blockStateCall], traceTransfers: true }, "latest"],
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    const json = await resp.json() as any;
+    if (json.error) {
+      return { success: false, returnData: "", gasUsed: 0, logs: [], error: `simulation_unavailable: ${json.error.message ?? "eth_simulateV1 unsupported"}` };
+    }
+    const result = json.result?.[0]?.calls?.[0];
+    if (!result) return { success: false, returnData: "", gasUsed: 0, logs: [], error: "simulation_unavailable: empty response" };
+    const logs: SimulationLog[] = (result.logs ?? []).map((log: any) => ({
+      address: String(log.address).toLowerCase(),
+      topics: (log.topics ?? []).map((topic: string) => topic.toLowerCase()),
+      data: String(log.data ?? "0x"),
+    }));
+    const success = result.status === "0x1";
+    return {
+      success,
+      returnData: result.returnData ?? "0x",
+      gasUsed: result.gasUsed ? Number(BigInt(result.gasUsed)) : 0,
+      logs,
+      error: success ? undefined : (result.error?.message ?? "simulation reverted"),
+    };
+  } catch (err: any) {
+    return { success: false, returnData: "", gasUsed: 0, logs: [], error: `simulation_unavailable: ${err?.message ?? String(err)}` };
+  }
+}
+
+export function extractTokenOutput(
+  logs: SimulationLog[], tokenAddress: string, recipientAddress: string,
+): bigint | null {
+  const token = tokenAddress.toLowerCase();
+  const recipient = `0x${recipientAddress.slice(2).toLowerCase().padStart(64, "0")}`;
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const log = logs[i];
+    if (log.address === token && log.topics[0] === TRANSFER_TOPIC && log.topics[2] === recipient && log.data.length >= 66) {
+      return BigInt(log.data.slice(0, 66));
+    }
+  }
+  return null;
+}
+
+export function extractNativeOutput(logs: SimulationLog[], wbnbAddress: string): bigint | null {
+  const wbnb = wbnbAddress.toLowerCase();
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const log = logs[i];
+    if (log.address === wbnb && log.topics[0] === WITHDRAWAL_TOPIC && log.data.length >= 66) {
+      return BigInt(log.data.slice(0, 66));
+    }
+  }
+  return null;
+}
+
 // ── OKX Auth ────────────────────────────────────────────────────────
 export function getOkxCreds() {
   const { OKX_API_KEY: apiKey, OKX_SECRET_KEY: secretKey, OKX_PASSPHRASE: passphrase, OKX_PROJECT_ID: projectId } = process.env;
@@ -192,6 +286,12 @@ export function fmtN(n: number): string {
   if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
   if (n >= 1e3) return (n / 1e3).toFixed(2) + "K";
   return n.toFixed(2);
+}
+
+/** Signed percentage change with 1e-6 percentage-point precision. */
+export function deviationPct(actual: bigint, quoted: bigint): number {
+  if (quoted === 0n) return 0;
+  return Number((actual - quoted) * 100_000_000n / quoted) / 1_000_000;
 }
 
 export function fmtTable(headers: string[], rows: string[][], colAligns?: ("l" | "r")[]): string {

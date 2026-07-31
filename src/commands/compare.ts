@@ -15,6 +15,7 @@ export async function cmdCompare(args: string[]) {
   let duration = 60, interval = 10, minUsd = 10000, maxUsd = 1000000;
   let outDir = "/tmp/aggregator", rpcUrl = "https://bsc-dataseed.bnbchain.org";
   let apiUrl = "", env = DEFAULT_PEACH_ENV, slippageBps = 1000, doSim = true;
+  let seed = 42, maxRounds = 0, casesFile = "";
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -27,6 +28,9 @@ export async function cmdCompare(args: string[]) {
       case "--env":       env = args[++i]; break;
       case "--api":       apiUrl = args[++i]; break;
       case "--slippage":  slippageBps = parseInt(args[++i]); break;
+      case "--seed":      seed = parseInt(args[++i]); break;
+      case "--rounds":    maxRounds = parseInt(args[++i]); break;
+      case "--cases":     casesFile = args[++i]; break;
       case "--no-sim":    doSim = false; break;
     }
   }
@@ -38,6 +42,15 @@ export async function cmdCompare(args: string[]) {
   const logPath = path.join(outDir, `compare-${tsStr}.jsonl`);
   const statsPath = path.join(outDir, `compare-stats-${tsStr}.json`);
   const provider = new ethers.JsonRpcProvider(rpcUrl);
+  // Mulberry32: deterministic case selection for reproducible benchmark runs.
+  let randomState = seed >>> 0;
+  const random = () => {
+    randomState += 0x6D2B79F5;
+    let t = randomState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 
   console.log("╔═══════════════════════════════════════════════════════════════╗");
   console.log("║       Peach vs OKX Aggregator Comparison (Quote + Sim)       ║");
@@ -47,39 +60,63 @@ export async function cmdCompare(args: string[]) {
   console.log(`║  Simulation: ${doSim ? "ON" : "OFF"} | Slippage: ${slippageBps}bps`);
   console.log(`║  Log:        ${logPath}`);
   console.log(`║  Peach API:  ${apiUrl}`);
+  console.log(`║  Seed:       ${seed}${maxRounds > 0 ? ` | Rounds: ${maxRounds}` : ""}`);
   console.log("╚═══════════════════════════════════════════════════════════════╝\n");
 
   const tokens = loadTokenPool();
-  console.log(`Loaded ${tokens.length} tokens from tokens.json\n`);
+  type FixedCase = { from_address: string; target_address: string; from_symbol: string; target_symbol: string; amount: string; usd: number; decimals: number };
+  const fixedCases: FixedCase[] = casesFile
+    ? JSON.parse(fs.readFileSync(casesFile, "utf-8"))
+    : [];
+  if (fixedCases.length > 0 && maxRounds <= 0) maxRounds = fixedCases.length;
+  console.log(fixedCases.length > 0
+    ? `Loaded ${fixedCases.length} fixed cases from ${casesFile}\n`
+    : `Loaded ${tokens.length} tokens from tokens.json\n`);
 
   let round = 0;
   let qStats = { okxWins: 0, peachWins: 0, ties: 0, bothFail: 0 };
-  let sStats = { okxSuccess: 0, okxFail: 0, peachSuccess: 0, peachFail: 0, okxWins: 0, peachWins: 0, ties: 0, bothFail: 0, okxDevSum: 0, okxDevN: 0, peachDevSum: 0, peachDevN: 0 };
+  let sStats = {
+    okxSuccess: 0, okxFail: 0, peachSuccess: 0, peachFail: 0,
+    okxWins: 0, peachWins: 0, ties: 0, bothFail: 0,
+    okxDevSum: 0, okxDevN: 0, peachDevSum: 0, peachDevN: 0,
+    okxPositive: 0, okxNegative: 0, okxZero: 0,
+    peachPositive: 0, peachNegative: 0, peachZero: 0,
+    adjustedOkxWins: 0, adjustedPeachWins: 0, adjustedTies: 0,
+  };
   let okxOnlyDexVol: Record<string, number> = {};
   let totalOkxAdvUsd = 0;
   let backoffMs = 0;
 
-  while (Date.now() < endTime) {
+  while (Date.now() < endTime && (maxRounds <= 0 || round < maxRounds)) {
     round++;
     const roundStart = Date.now();
     if (backoffMs > 0) { process.stdout.write(`  [backoff] ${(backoffMs / 1000).toFixed(0)}s...\n`); await sleep(backoffMs); backoffMs = 0; }
 
-    const token = tokens[Math.floor(Math.random() * tokens.length)];
-    const validTargets = TARGET_TOKENS.filter(t => token.okxAddress !== t.address && token.address !== t.address);
-    if (validTargets.length === 0) continue;
-    const target = validTargets[Math.floor(Math.random() * validTargets.length)];
+    const fixed = fixedCases.length > 0 ? fixedCases[(round - 1) % fixedCases.length] : null;
+    const token = fixed ? null : tokens[Math.floor(random() * tokens.length)];
+    const validTargets = fixed ? [] : TARGET_TOKENS.filter(t => token!.okxAddress !== t.address && token!.address !== t.address);
+    if (!fixed && validTargets.length === 0) continue;
+    const target = fixed ? null : validTargets[Math.floor(random() * validTargets.length)];
 
-    const tradeUsd = minUsd + Math.random() * (maxUsd - minUsd);
-    const tokenAmount = tradeUsd / token.priceUsd;
-    const amountRaw = ethers.parseUnits(tokenAmount.toFixed(Math.min(token.decimals, 8)), token.decimals);
-    const pairKey = `${token.symbol}->${target.symbol}`;
-    const peachTarget = target.address === NATIVE_TOKEN ? WBNB : target.address;
-    const isNative = token.peachAddress.toLowerCase() === WBNB;
-    const sender = doSim ? await findSender(provider, token.okxAddress === NATIVE_TOKEN ? WBNB : token.address, amountRaw, isNative) : "0xF977814e90dA44bFA03b6295A0616a897441aceC";
+    const tradeUsd = fixed ? fixed.usd : minUsd + random() * (maxUsd - minUsd);
+    const amountRaw = fixed
+      ? BigInt(fixed.amount)
+      : ethers.parseUnits((tradeUsd / token!.priceUsd).toFixed(Math.min(token!.decimals, 8)), token!.decimals);
+    const fromAddress = fixed ? fixed.from_address.toLowerCase() : token!.address;
+    const fromSymbol = fixed ? fixed.from_symbol : token!.symbol;
+    const targetAddress = fixed ? fixed.target_address.toLowerCase() : target!.address;
+    const targetSymbol = fixed ? fixed.target_symbol : target!.symbol;
+    const peachFrom = fromAddress === NATIVE_TOKEN ? WBNB : fromAddress;
+    const peachTarget = targetAddress === NATIVE_TOKEN ? WBNB : targetAddress;
+    const okxFrom = fromAddress === WBNB ? NATIVE_TOKEN : fromAddress;
+    const okxTarget = targetAddress === WBNB ? NATIVE_TOKEN : targetAddress;
+    const pairKey = `${fromSymbol}->${targetSymbol}`;
+    const isNative = peachFrom === WBNB;
+    const sender = doSim ? await findSender(provider, isNative ? WBNB : fromAddress, amountRaw, isNative) : "0xF977814e90dA44bFA03b6295A0616a897441aceC";
 
     const [okx, peach] = await Promise.all([
-      queryOkx(token.okxAddress, target.address, amountRaw.toString(), tradeUsd, { sender, slippageBps, provider, doSim }),
-      queryPeach(token.peachAddress, peachTarget, amountRaw.toString(), tradeUsd, { apiUrl, rpcUrl, sender, slippageBps, provider, doSim }),
+      queryOkx(okxFrom, okxTarget, amountRaw.toString(), tradeUsd, { sender, slippageBps, provider, rpcUrl, doSim }),
+      queryPeach(peachFrom, peachTarget, amountRaw.toString(), tradeUsd, { apiUrl, rpcUrl, sender, slippageBps, provider, doSim }),
     ]);
 
     if (okx.error?.includes("Too Many Requests") || okx.error?.includes("429")) backoffMs = Math.min(30000, Math.max(5000, backoffMs + 5000));
@@ -98,8 +135,14 @@ export async function cmdCompare(args: string[]) {
     // Sim stats
     if (okx.simStatus === "SUCCESS") sStats.okxSuccess++; else if (okx.simStatus === "FAILED") sStats.okxFail++;
     if (peach.simStatus === "SUCCESS") sStats.peachSuccess++; else if (peach.simStatus === "FAILED") sStats.peachFail++;
-    if (okx.simStatus === "SUCCESS" && okx.simAmountOut > 0n) { sStats.okxDevSum += Math.abs(okx.simDeviationPct); sStats.okxDevN++; }
-    if (peach.simStatus === "SUCCESS" && peach.simAmountOut > 0n) { sStats.peachDevSum += Math.abs(peach.simDeviationPct); sStats.peachDevN++; }
+    if (okx.simStatus === "SUCCESS" && okx.simAmountOut > 0n) {
+      sStats.okxDevSum += okx.simDeviationPct; sStats.okxDevN++;
+      if (okx.simDeviationPct > 0) sStats.okxPositive++; else if (okx.simDeviationPct < 0) sStats.okxNegative++; else sStats.okxZero++;
+    }
+    if (peach.simStatus === "SUCCESS" && peach.simAmountOut > 0n) {
+      sStats.peachDevSum += peach.simDeviationPct; sStats.peachDevN++;
+      if (peach.simDeviationPct > 0) sStats.peachPositive++; else if (peach.simDeviationPct < 0) sStats.peachNegative++; else sStats.peachZero++;
+    }
 
     let sWinner = "none", sDiff = 0;
     const okxSimOk = okx.simStatus === "SUCCESS" && okx.simAmountOut > 0n;
@@ -108,6 +151,12 @@ export async function cmdCompare(args: string[]) {
       if (okx.simAmountOut > peach.simAmountOut) { sWinner = "okx"; sStats.okxWins++; sDiff = Number((okx.simAmountOut - peach.simAmountOut) * 10000n / peach.simAmountOut) / 100; }
       else if (peach.simAmountOut > okx.simAmountOut) { sWinner = "peach"; sStats.peachWins++; sDiff = Number((peach.simAmountOut - okx.simAmountOut) * 10000n / okx.simAmountOut) / 100; }
       else { sWinner = "tie"; sStats.ties++; }
+      // Hypothesis: Peach retains all positive slippage. User receives the
+      // quote when execution is better, otherwise the actual simulated amount.
+      const peachAfterPositiveCapture = peach.simAmountOut > peach.amountOut ? peach.amountOut : peach.simAmountOut;
+      if (okx.simAmountOut > peachAfterPositiveCapture) sStats.adjustedOkxWins++;
+      else if (peachAfterPositiveCapture > okx.simAmountOut) sStats.adjustedPeachWins++;
+      else sStats.adjustedTies++;
     } else if (okx.simStatus !== "SKIPPED" || peach.simStatus !== "SKIPPED") {
       if (!okxSimOk && !peachSimOk) { sWinner = "both_fail"; sStats.bothFail++; }
       else { sWinner = okxSimOk ? "okx" : "peach"; if (okxSimOk) sStats.okxWins++; else sStats.peachWins++; }
@@ -120,8 +169,9 @@ export async function cmdCompare(args: string[]) {
 
     // Log
     appendLog(logPath, {
-      round, time: new Date().toISOString(), pair: pairKey, from: token.symbol, fromAddr: token.address, target: target.symbol, targetAddr: target.address, tradeUsd, amountIn: amountRaw.toString(),
-      quote: { winner: qWinner, diffPct: qDiff }, sim: { winner: sWinner, diffPct: sDiff },
+      round, time: new Date().toISOString(), pair: pairKey, from: fromSymbol, fromAddr: fromAddress, target: targetSymbol, targetAddr: targetAddress, tradeUsd, amountIn: amountRaw.toString(),
+      quote: { winner: qWinner, diffPct: qDiff },
+      sim: { winner: sWinner, diffPct: sDiff, peachPositiveCaptured: peachSimOk && peach.simAmountOut > peach.amountOut },
       okx: { status: okx.ok ? "OK" : "ERROR", amountOut: okx.ok ? okx.amountOut.toString() : null, latencyMs: okx.latencyMs, error: okx.error ?? null, routes: okx.routes, simStatus: okx.simStatus, simAmountOut: okx.simAmountOut > 0n ? okx.simAmountOut.toString() : null, simLatencyMs: okx.simLatencyMs, simError: okx.simError ?? null, simDeviationPct: okx.simDeviationPct },
       peach: { status: peach.ok ? "OK" : "ERROR", amountOut: peach.ok ? peach.amountOut.toString() : null, latencyMs: peach.latencyMs, error: peach.error ?? null, routes: peach.routes, simStatus: peach.simStatus, simAmountOut: peach.simAmountOut > 0n ? peach.simAmountOut.toString() : null, simLatencyMs: peach.simLatencyMs, simError: peach.simError ?? null, simDeviationPct: peach.simDeviationPct },
     });
@@ -136,13 +186,19 @@ export async function cmdCompare(args: string[]) {
         console.log(`  [Sim]   OKX: ${sStats.okxWins}(${sT > 0 ? (sStats.okxWins / sT * 100).toFixed(1) : 0}%) | Peach: ${sStats.peachWins}(${sT > 0 ? (sStats.peachWins / sT * 100).toFixed(1) : 0}%) | Tie: ${sStats.ties} | Fail: ${sStats.bothFail}`);
         const okxET = sStats.okxSuccess + sStats.okxFail; const pET = sStats.peachSuccess + sStats.peachFail;
         console.log(`  [Sim Error] OKX: ${sStats.okxFail}/${okxET}(${okxET > 0 ? (sStats.okxFail / okxET * 100).toFixed(1) : 0}%) | Peach: ${sStats.peachFail}/${pET}(${pET > 0 ? (sStats.peachFail / pET * 100).toFixed(1) : 0}%)`);
-        console.log(`  [Deviation] OKX: ${sStats.okxDevN > 0 ? (sStats.okxDevSum / sStats.okxDevN).toFixed(4) : "-"}% | Peach: ${sStats.peachDevN > 0 ? (sStats.peachDevSum / sStats.peachDevN).toFixed(4) : "-"}%`);
+        console.log(`  [Slippage] OKX +:${sStats.okxPositive} -:${sStats.okxNegative} avg:${sStats.okxDevN > 0 ? (sStats.okxDevSum / sStats.okxDevN).toFixed(4) : "-"}% | Peach +:${sStats.peachPositive} -:${sStats.peachNegative} avg:${sStats.peachDevN > 0 ? (sStats.peachDevSum / sStats.peachDevN).toFixed(4) : "-"}%`);
+        console.log(`  [Peach captures +slippage] OKX: ${sStats.adjustedOkxWins} | Peach: ${sStats.adjustedPeachWins} | Tie: ${sStats.adjustedTies}`);
       }
       console.log();
     }
 
     // Save stats
-    fs.writeFileSync(statsPath, JSON.stringify({ lastUpdate: new Date().toISOString(), roundsCompleted: round, quote: qStats, simulation: doSim ? sStats : null, totalOkxAdvantageUsd: totalOkxAdvUsd, okxOnlyDexVolume: okxOnlyDexVol, logFile: logPath }, null, 2), "utf-8");
+    fs.writeFileSync(statsPath, JSON.stringify({
+      lastUpdate: new Date().toISOString(), roundsCompleted: round,
+      config: { apiUrl, rpcUrl, seed, maxRounds, casesFile: casesFile || null, duration, interval, minUsd, maxUsd, slippageBps, doSim },
+      quote: qStats, simulation: doSim ? sStats : null,
+      totalOkxAdvantageUsd: totalOkxAdvUsd, okxOnlyDexVolume: okxOnlyDexVol, logFile: logPath,
+    }, null, 2), "utf-8");
 
     const waitMs = Math.max(0, interval * 1000 - (Date.now() - roundStart));
     if (waitMs > 0 && Date.now() + waitMs < endTime) await sleep(waitMs);
