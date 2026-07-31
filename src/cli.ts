@@ -44,7 +44,8 @@ quote options:
   --slippage <bps>     Slippage in bps (default: 50)
   --sender <addr>      Sender address (auto-detect)
   --rpc <url>          BSC RPC URL
-  --api <url>          Peach API URL
+  --env <prod|test>    Peach API env (default: prod)
+  --api <url>          Peach API URL (overrides --env)
   --depth <n>          Peach search depth (default: 3)
   --split <n>          Peach split count (default: 5)
   --dex-ids <ids>      OKX DEX IDs filter
@@ -58,7 +59,8 @@ compare options:
   --no-sim             Skip simulation
   --out <dir>          Output directory (default: /tmp/aggregator)
   --rpc <url>          BSC RPC URL
-  --api <url>          Peach API URL
+  --env <prod|test>    Peach API env (default: prod)
+  --api <url>          Peach API URL (overrides --env)
 
 dex-stats options:
   --duration <min>     Duration in minutes (default: 60)
@@ -69,7 +71,8 @@ dex-stats options:
 
 debug options:
   --rpc <url>          BSC RPC URL
-  --api <url>          Peach API URL
+  --env <prod|test>    Peach API env (default: prod)
+  --api <url>          Peach API URL (overrides --env)
   --sender <addr>      Sender address (auto-detect)
   --slippage <bps>     Slippage (default: 50)
   --depth <n>          Search depth (default: 3)
@@ -79,7 +82,8 @@ debug options:
 
 hop-sim options:
   --rpc <url>          BSC RPC URL
-  --api <url>          Peach API URL
+  --env <prod|test>    Peach API env (default: prod)
+  --api <url>          Peach API URL (overrides --env)
   --depth <n>          Search depth (default: 3)
   --split <n>          Split count (default: 5)
   --threshold <bps>    Deviation alert threshold (default: 50 = 0.5%)
@@ -136,7 +140,7 @@ async function main() {
   }
 
   // Load OKX credentials for commands that need them
-  if (cmd !== "analyze" && cmd !== "fetch-tokens") {
+  if (cmd !== "analyze" && cmd !== "fetch-tokens" && cmd !== "show") {
     loadOkxEnv(envFilePath);
   }
 
@@ -174,6 +178,11 @@ async function main() {
     case "tax-check": {
       const { cmdTaxCheck } = await import("./commands/tax-check.js");
       await cmdTaxCheck(rest);
+      break;
+    }
+    case "show": {
+      const { cmdShow } = await import("./commands/show.js");
+      await cmdShow(rest);
       break;
     }
     case "fetch-tokens": {

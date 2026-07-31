@@ -3,8 +3,8 @@
  */
 
 import { ethers } from "ethers";
-import { PeachClient, BSC_MAINNET_CONFIG } from "@pagg/aggregator-sdk";
-import type { Quote } from "@pagg/aggregator-sdk";
+import { PeachClient, BSC_MAINNET_CONFIG } from "@peachprojects/aggregator-sdk";
+import type { Quote } from "@peachprojects/aggregator-sdk";
 import { decodeRevert, WBNB, buildErc20StateOverrides, type AggResult, emptyResult } from "./common.js";
 import { tokenLabel } from "./tokens.js";
 
@@ -32,14 +32,19 @@ export async function queryPeach(
 
   const depth = opts.depth ?? 3;
   const splitCount = opts.splitCount ?? 5;
-  const providers = opts.providers ?? "PANCAKEV2,PANCAKEV3,UNISWAPV3,DODO,THENA";
   const version = opts.version ?? "v5";
 
   const params = new URLSearchParams({
     from: fromAddr, target: toAddr, amount,
     by_amount_in: "true", depth: depth.toString(),
-    split_count: splitCount.toString(), providers, v: "1001500",
+    split_count: splitCount.toString(), v: "1001500",
   });
+  // Omit `providers` by default so the aggregator routes through ALL
+  // version-eligible DEXes (the `v` value gates the set). Only restrict when
+  // the caller explicitly passes a provider list.
+  if (opts.providers && opts.providers.trim()) {
+    params.set("providers", opts.providers.trim());
+  }
   const endpoint = version === "v5" ? "find_routes" : `find_routes_${version}`;
   const url = `${opts.apiUrl}/router/${endpoint}?${params}`;
 
@@ -92,11 +97,11 @@ export async function queryPeach(
     if (opts.doSim) {
       const simStart = Date.now();
       try {
-        const isNative = fromAddr.toLowerCase() === WBNB;
         const routerAddress = quote.routerAddress ?? config.routerAddress;
-        const stateOverrides = isNative
-          ? undefined
-          : buildErc20StateOverrides(fromAddr, opts.sender, routerAddress, BigInt(amount) * 2n);
+        // The router pulls srcToken via transferFrom even for native BNB input
+        // (srcToken resolves to WBNB), so always override balance + allowance
+        // for the sender; otherwise WBNB.transferFrom reverts with empty data.
+        const stateOverrides = buildErc20StateOverrides(fromAddr, opts.sender, routerAddress, BigInt(amount) * 2n);
 
         const sim = await client.simulate(quote, opts.slippageBps, opts.sender, stateOverrides);
         result.simLatencyMs = Date.now() - simStart;

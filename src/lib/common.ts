@@ -44,6 +44,27 @@ export function loadOkxEnv(envFilePath?: string) {
   loadEnvFile(path.join(os.homedir(), ".okx", ".env"));
 }
 
+// ── Peach API environment ───────────────────────────────────────────
+export const PEACH_API_URLS: Record<string, string> = {
+  prod: "https://api.peach.ag",
+  test: "https://api.cipheron.org",
+};
+export const DEFAULT_PEACH_ENV = "prod";
+
+/**
+ * Resolve the Peach API base URL from CLI flags.
+ * An explicit `--api <url>` always wins; otherwise map `--env <prod|test>`.
+ */
+export function resolveApiUrl(explicitApi: string, env: string): string {
+  if (explicitApi) return explicitApi;
+  const url = PEACH_API_URLS[env];
+  if (!url) {
+    console.error(`Unknown --env "${env}". Use "prod" or "test".`);
+    process.exit(1);
+  }
+  return url;
+}
+
 // ── Proxy-aware fetch ───────────────────────────────────────────────
 const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.HTTP_PROXY;
 const dispatcher: Dispatcher | undefined = proxyUrl ? new ProxyAgent(proxyUrl) : undefined;
@@ -93,7 +114,10 @@ export async function getOkxApproveSpender(): Promise<string> {
 }
 
 // ── ERC20 state overrides ───────────────────────────────────────────
-const STATE_OVERRIDE_SLOTS = [0, 1, 2, 9, 10, 11, 12, 13, 50, 51, 52, 100, 101, 102];
+// Candidate storage slots probed when overriding ERC20 balance/allowance for
+// simulation. Slots 3/4 cover canonical WBNB (balanceOf @ 3, allowance @ 4),
+// which the router now pulls via transferFrom even for native BNB input.
+const STATE_OVERRIDE_SLOTS = [0, 1, 2, 3, 4, 9, 10, 11, 12, 13, 50, 51, 52, 100, 101, 102];
 
 export function buildErc20StateOverrides(
   tokenAddress: string, owner: string, spender: string, balance: bigint,

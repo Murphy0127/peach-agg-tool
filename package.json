@@ -18,7 +18,7 @@
     "dev": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@pagg/aggregator-sdk": "0.0.0-experimental-20260313085229",
+    "@peachprojects/aggregator-sdk": "^0.0.0-experimental-20260601084259",
     "ethers": "^6.0.0",
     "undici": "^7.24.4"
   },

@@ -3,6 +3,7 @@ import * as path from "path";
 import { ethers } from "ethers";
 import {
   pad, padL, fmtN, printKV, printTable, sleep, appendLog, findSender,
+  resolveApiUrl, DEFAULT_PEACH_ENV,
   NATIVE_TOKEN, WBNB, USDT, USDC, TARGET_TOKENS,
   loadTokenPool, type AggResult,
 } from "../lib/common.js";
@@ -13,7 +14,7 @@ import { tokenLabel, fmtAmt } from "../lib/tokens.js";
 export async function cmdCompare(args: string[]) {
   let duration = 60, interval = 10, minUsd = 10000, maxUsd = 1000000;
   let outDir = "/tmp/aggregator", rpcUrl = "https://bsc-dataseed.bnbchain.org";
-  let apiUrl = "https://api.cipheron.org", slippageBps = 50, doSim = true;
+  let apiUrl = "", env = DEFAULT_PEACH_ENV, slippageBps = 1000, doSim = true;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -23,11 +24,13 @@ export async function cmdCompare(args: string[]) {
       case "--max-usd":   maxUsd = parseInt(args[++i]); break;
       case "--out":       outDir = args[++i]; break;
       case "--rpc":       rpcUrl = args[++i]; break;
+      case "--env":       env = args[++i]; break;
       case "--api":       apiUrl = args[++i]; break;
       case "--slippage":  slippageBps = parseInt(args[++i]); break;
       case "--no-sim":    doSim = false; break;
     }
   }
+  apiUrl = resolveApiUrl(apiUrl, env);
 
   const endTime = Date.now() + duration * 60_000;
   fs.mkdirSync(outDir, { recursive: true });

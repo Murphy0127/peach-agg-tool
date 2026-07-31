@@ -12,6 +12,7 @@
 import { ethers } from "ethers";
 import {
   printKV, printTable, pad, padL, fmtN, findSender,
+  resolveApiUrl, DEFAULT_PEACH_ENV,
   WBNB, type AggResult,
 } from "../lib/common.js";
 import { queryPeach } from "../lib/peach.js";
@@ -394,9 +395,10 @@ Diagnose Peach simulation failures by inspecting pool state and comparing with o
 
 Options:
   --rpc <url>          BSC RPC URL
-  --api <url>          Peach API URL
+  --env <prod|test>    Peach API env (default: prod = https://api.peach.ag)
+  --api <url>          Peach API URL (overrides --env)
   --sender <address>   Sender address (auto-detect)
-  --slippage <bps>     Slippage (default: 50)
+  --slippage <bps>     Slippage (default: 1000 = 10%)
   --depth <n>          Search depth (default: 3)
   --split <n>          Split count (default: 5)
   --providers <list>   DEX providers
@@ -414,9 +416,9 @@ Environment:
   const target = resolveToken(args[1]);
   const amountStr = args[2];
 
-  let slippage = 50, sender = "", rpcUrl = "https://bsc-dataseed.bnbchain.org";
-  let apiUrl = "https://api.cipheron.org";
-  let depth = 3, splitCount = 5, providers = "PANCAKEV2,PANCAKEV3,UNISWAPV3,DODO,THENA";
+  let slippage = 1000, sender = "", rpcUrl = "https://bsc-dataseed.bnbchain.org";
+  let apiUrl = "", env = DEFAULT_PEACH_ENV;
+  let depth = 3, splitCount = 5, providers = "";
   let version = "v5", checkRedis = false, force = false, noOnchain = false;
   const debugToken = process.env.PEACH_DEBUG_TOKEN || "";
 
@@ -425,6 +427,7 @@ Environment:
       case "--slippage":  slippage = parseInt(args[++i]); break;
       case "--sender":    sender = args[++i]; break;
       case "--rpc":       rpcUrl = args[++i]; break;
+      case "--env":       env = args[++i]; break;
       case "--api":       apiUrl = args[++i]; break;
       case "--depth":     depth = parseInt(args[++i]); break;
       case "--split":     splitCount = parseInt(args[++i]); break;
@@ -435,6 +438,7 @@ Environment:
       case "--force":     force = true; break;
     }
   }
+  apiUrl = resolveApiUrl(apiUrl, env);
 
   const srcDecimals = tokenDecimals(from);
   const isRawWei = !amountStr.includes(".") && amountStr.length >= 15 && /^\d+$/.test(amountStr);

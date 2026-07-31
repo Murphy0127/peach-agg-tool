@@ -10,10 +10,11 @@
  */
 
 import { ethers } from "ethers";
-import { PeachClient, BSC_MAINNET_CONFIG } from "@pagg/aggregator-sdk";
-import type { Quote } from "@pagg/aggregator-sdk";
+import { PeachClient, BSC_MAINNET_CONFIG } from "@peachprojects/aggregator-sdk";
+import type { Quote } from "@peachprojects/aggregator-sdk";
 import {
-  printKV, printTable, findSender, WBNB, decodeRevert,
+  printKV, printTable, findSender, WBNB, decodeRevert, buildErc20StateOverrides,
+  resolveApiUrl, DEFAULT_PEACH_ENV,
 } from "../lib/common.js";
 import { resolveToken, tokenLabel, tokenDecimals, fmtAmt } from "../lib/tokens.js";
 import { simHop, type HopData, type HopSimResult } from "../lib/pool-sim.js";
@@ -47,9 +48,10 @@ Two-layer per-hop analysis:
 
 Options:
   --rpc <url>          BSC RPC URL
-  --api <url>          Peach API URL
+  --env <prod|test>    Peach API env (default: prod = https://api.peach.ag)
+  --api <url>          Peach API URL (overrides --env)
   --sender <address>   Sender address
-  --slippage <bps>     Slippage (default: 50)
+  --slippage <bps>     Slippage (default: 1000 = 10%)
   --depth <n>          Search depth (default: 3)
   --split <n>          Split count (default: 5)
   --providers <list>   DEX providers
@@ -65,9 +67,9 @@ Examples:
   const target = resolveToken(args[1]);
   const amountStr = args[2];
 
-  let slippage = 50, sender = "", rpcUrl = "https://bsc-dataseed.bnbchain.org";
-  let apiUrl = "https://api.cipheron.org";
-  let depth = 3, splitCount = 5, providers = "PANCAKEV2,PANCAKEV3,UNISWAPV3,DODO,THENA";
+  let slippage = 1000, sender = "", rpcUrl = "https://bsc-dataseed.bnbchain.org";
+  let apiUrl = "", env = DEFAULT_PEACH_ENV;
+  let depth = 3, splitCount = 5, providers = "";
   let version = "v5", thresholdBps = 50;
 
   for (let i = 3; i < args.length; i++) {
@@ -75,6 +77,7 @@ Examples:
       case "--slippage":  slippage = parseInt(args[++i]); break;
       case "--sender":    sender = args[++i]; break;
       case "--rpc":       rpcUrl = args[++i]; break;
+      case "--env":       env = args[++i]; break;
       case "--api":       apiUrl = args[++i]; break;
       case "--depth":     depth = parseInt(args[++i]); break;
       case "--split":     splitCount = parseInt(args[++i]); break;
@@ -83,6 +86,7 @@ Examples:
       case "--threshold": thresholdBps = parseInt(args[++i]); break;
     }
   }
+  apiUrl = resolveApiUrl(apiUrl, env);
 
   const srcDecimals = tokenDecimals(from);
   const isRawWei = !amountStr.includes(".") && amountStr.length >= 15 && /^\d+$/.test(amountStr);
@@ -117,8 +121,10 @@ Examples:
   const routeParams = new URLSearchParams({
     from, target, amount: amountIn.toString(),
     by_amount_in: "true", depth: depth.toString(),
-    split_count: splitCount.toString(), providers, v: "1001500",
+    split_count: splitCount.toString(), v: "1001500",
   });
+  // Omit `providers` by default → aggregator uses all version-eligible DEXes.
+  if (providers && providers.trim()) routeParams.set("providers", providers.trim());
   const endpoint = version === "v5" ? "find_routes" : `find_routes_${version}`;
   const routeUrl = `${apiUrl}/router/${endpoint}?${routeParams}`;
 
@@ -146,11 +152,12 @@ Examples:
     feeRate: p.fee_rate,
   }));
 
-  // Build state overrides for simulation
+  // Build state overrides for simulation. The router pulls srcToken via
+  // transferFrom even for native BNB input (srcToken resolves to WBNB), so
+  // always override balance + allowance — and use our own builder, since the
+  // SDK's buildStateOverrides skips WBNB on the assumption of a msg.value path.
   const routerAddress = quote.routerAddress ?? config.routerAddress;
-  const stateOverrides = isNative
-    ? undefined
-    : client.buildStateOverrides(from, sender, routerAddress, amountIn * 2n);
+  const stateOverrides = buildErc20StateOverrides(from, sender, routerAddress, amountIn * 2n);
 
   // Step 2: Full route simulation via SDK
   console.log("[2/4] Full route simulation via Router contract...");
