@@ -18,6 +18,11 @@ export async function cmdAnalyze(args: string[]) {
   let sOkxDevSum = 0, sOkxDevN = 0, sPeachDevSum = 0, sPeachDevN = 0;
   let sOkxPos = 0, sOkxNeg = 0, sPeachPos = 0, sPeachNeg = 0;
   let adjustedOkx = 0, adjustedPeach = 0, adjustedTie = 0;
+  let qBothOk = 0, qOnlyOkx = 0, qOnlyPeach = 0, qBothFailed = 0;
+  let qBothOkxWins = 0, qBothPeachWins = 0, qBothTies = 0;
+  let simBothOk = 0, simBothOkxWins = 0, simBothPeachWins = 0, simBothTies = 0;
+  const okxQuoteLatency: number[] = [], peachQuoteLatency: number[] = [];
+  const okxSlippage: number[] = [], peachSlippage: number[] = [];
   const okxOnlyDex: Record<string, number> = {};
   const allOkxDex: Record<string, number> = {};
   const allPeachDex: Record<string, number> = {};
@@ -39,6 +44,19 @@ export async function cmdAnalyze(args: string[]) {
     const sW = e.sim?.winner ?? "none";
     const sD = e.sim?.diffPct ?? 0;
 
+    const okxQuoteOk = okx?.status === "OK";
+    const peachQuoteOk = peach?.status === "OK";
+    if (okxQuoteOk) okxQuoteLatency.push(okx.latencyMs);
+    if (peachQuoteOk) peachQuoteLatency.push(peach.latencyMs);
+    if (okxQuoteOk && peachQuoteOk) {
+      qBothOk++;
+      if (BigInt(okx.amountOut) > BigInt(peach.amountOut)) qBothOkxWins++;
+      else if (BigInt(peach.amountOut) > BigInt(okx.amountOut)) qBothPeachWins++;
+      else qBothTies++;
+    } else if (okxQuoteOk) qOnlyOkx++;
+    else if (peachQuoteOk) qOnlyPeach++;
+    else qBothFailed++;
+
     if (qW === "okx") { qOkx++; qOkxAdv += qD; qOkxUsd += (tradeUsd ?? 0) * qD / 100; }
     else if (qW === "peach") { qPeach++; qPeachAdv += qD; qPeachUsd += (tradeUsd ?? 0) * qD / 100; }
     else if (qW === "tie") qTie++; else if (qW === "both_fail") qFail++;
@@ -49,10 +67,12 @@ export async function cmdAnalyze(args: string[]) {
     if (sW === "okx") sOkxW++; else if (sW === "peach") sPeachW++; else if (sW === "tie") sTie++; else if (sW === "both_fail") sFail++;
     if (okx?.simStatus === "SUCCESS" && okx.simDeviationPct !== undefined) {
       sOkxDevSum += okx.simDeviationPct; sOkxDevN++;
+      okxSlippage.push(okx.simDeviationPct);
       if (okx.simDeviationPct > 0) sOkxPos++; else if (okx.simDeviationPct < 0) sOkxNeg++;
     }
     if (peach?.simStatus === "SUCCESS" && peach.simDeviationPct !== undefined) {
       sPeachDevSum += peach.simDeviationPct; sPeachDevN++;
+      peachSlippage.push(peach.simDeviationPct);
       if (peach.simDeviationPct > 0) sPeachPos++; else if (peach.simDeviationPct < 0) sPeachNeg++;
     }
     if (okx?.simStatus === "SUCCESS" && peach?.simStatus === "SUCCESS" && okx.simAmountOut && peach.simAmountOut && peach.amountOut) {
@@ -60,6 +80,8 @@ export async function cmdAnalyze(args: string[]) {
       const peachActual = BigInt(peach.simAmountOut);
       const peachQuote = BigInt(peach.amountOut);
       const peachAfterCapture = peachActual > peachQuote ? peachQuote : peachActual;
+      simBothOk++;
+      if (okxActual > peachActual) simBothOkxWins++; else if (peachActual > okxActual) simBothPeachWins++; else simBothTies++;
       if (okxActual > peachAfterCapture) adjustedOkx++; else if (peachAfterCapture > okxActual) adjustedPeach++; else adjustedTie++;
     }
 
@@ -84,26 +106,33 @@ export async function cmdAnalyze(args: string[]) {
   const hasSim = sOkxS + sOkxF + sPeachS + sPeachF > 0;
   const qV = qOkx + qPeach + qTie;
   const sV = sOkxW + sPeachW + sTie;
+  const pct = (n: number, d: number) => d > 0 ? (n / d * 100).toFixed(1) : "0.0";
+  const percentile = (values: number[], p: number) => {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p))];
+  };
 
   console.log("\n╔═══════════════════════════════════════════════════════════════════════════╗");
   console.log("║          Peach vs OKX — Analysis                                        ║");
   console.log("╠═══════════════════════════════════════════════════════════════════════════╣");
   console.log(`║  Log: ${logFile}`);
-  console.log(`║  Rounds: ${total} | Valid quotes: ${qV} | Both fail: ${qFail} | Sim: ${hasSim ? "YES" : "NO"}`);
+  console.log(`║  Rounds: ${total} | Both quote success: ${qBothOk} | Both fail: ${qBothFailed} | Sim: ${hasSim ? "YES" : "NO"}`);
   console.log("╠═══════════════════════════════════════════════════════════════════════════╣\n");
 
   console.log("1. QUOTE WIN RATE\n" + "─".repeat(70));
-  console.log(`   OKX:   ${qOkx} (${qV > 0 ? (qOkx / qV * 100).toFixed(1) : 0}%)  avg: ${qOkx > 0 ? (qOkxAdv / qOkx).toFixed(3) : 0}%  total: $${fmtN(qOkxUsd)}`);
-  console.log(`   Peach: ${qPeach} (${qV > 0 ? (qPeach / qV * 100).toFixed(1) : 0}%)  avg: ${qPeach > 0 ? (qPeachAdv / qPeach).toFixed(3) : 0}%  total: $${fmtN(qPeachUsd)}`);
-  console.log(`   Ties:  ${qTie}\n`);
+  console.log(`   Both success: ${qBothOk} | OKX ${qBothOkxWins} (${pct(qBothOkxWins, qBothOk)}%) | Peach ${qBothPeachWins} (${pct(qBothPeachWins, qBothOk)}%) | Tie ${qBothTies}`);
+  console.log(`   One-sided: OKX only ${qOnlyOkx} | Peach only ${qOnlyPeach} | Both failed ${qBothFailed}`);
+  console.log(`   Quote latency: OKX p50/p95/p99 ${percentile(okxQuoteLatency, .5).toFixed(0)}/${percentile(okxQuoteLatency, .95).toFixed(0)}/${percentile(okxQuoteLatency, .99).toFixed(0)}ms | Peach ${percentile(peachQuoteLatency, .5).toFixed(0)}/${percentile(peachQuoteLatency, .95).toFixed(0)}/${percentile(peachQuoteLatency, .99).toFixed(0)}ms\n`);
 
   if (hasSim) {
     console.log("2. SIMULATION\n" + "─".repeat(70));
     const oT = sOkxS + sOkxF, pT = sPeachS + sPeachF;
     console.log(`   Error Rate:  OKX ${sOkxF}/${oT}(${oT > 0 ? (sOkxF / oT * 100).toFixed(1) : 0}%)  Peach ${sPeachF}/${pT}(${pT > 0 ? (sPeachF / pT * 100).toFixed(1) : 0}%)`);
-    console.log(`   Sim Winner:  OKX ${sOkxW}(${sV > 0 ? (sOkxW / sV * 100).toFixed(1) : 0}%)  Peach ${sPeachW}(${sV > 0 ? (sPeachW / sV * 100).toFixed(1) : 0}%)  Tie ${sTie}`);
-    console.log(`   Slippage:    OKX +${sOkxPos}/-${sOkxNeg}, avg ${sOkxDevN > 0 ? (sOkxDevSum / sOkxDevN).toFixed(4) : "N/A"}%  Peach +${sPeachPos}/-${sPeachNeg}, avg ${sPeachDevN > 0 ? (sPeachDevSum / sPeachDevN).toFixed(4) : "N/A"}%`);
-    console.log(`   Peach captures all positive slippage: OKX ${adjustedOkx}  Peach ${adjustedPeach}  Tie ${adjustedTie}`);
+    console.log(`   Both success: ${simBothOk} | OKX ${simBothOkxWins} (${pct(simBothOkxWins, simBothOk)}%) | Peach ${simBothPeachWins} (${pct(simBothPeachWins, simBothOk)}%) | Tie ${simBothTies}`);
+    console.log(`   Slippage:    OKX +${sOkxPos} (${pct(sOkxPos, sOkxDevN)}%)/-${sOkxNeg}, median ${percentile(okxSlippage, .5).toFixed(4)}%, avg ${sOkxDevN > 0 ? (sOkxDevSum / sOkxDevN).toFixed(4) : "N/A"}%`);
+    console.log(`                Peach +${sPeachPos} (${pct(sPeachPos, sPeachDevN)}%)/-${sPeachNeg}, median ${percentile(peachSlippage, .5).toFixed(4)}%, avg ${sPeachDevN > 0 ? (sPeachDevSum / sPeachDevN).toFixed(4) : "N/A"}%`);
+    console.log(`   Peach captures all positive slippage (${adjustedOkx + adjustedPeach + adjustedTie} comparable): OKX ${adjustedOkx} (${pct(adjustedOkx, adjustedOkx + adjustedPeach + adjustedTie)}%)  Peach ${adjustedPeach} (${pct(adjustedPeach, adjustedOkx + adjustedPeach + adjustedTie)}%)  Tie ${adjustedTie}`);
     const topOE = Object.entries(okxSimErrs).sort(([, a], [, b]) => b - a).slice(0, 3);
     const topPE = Object.entries(peachSimErrs).sort(([, a], [, b]) => b - a).slice(0, 3);
     if (topOE.length) { console.log("   OKX errors:"); for (const [e, n] of topOE) console.log(`     ${n}x ${e}`); }
