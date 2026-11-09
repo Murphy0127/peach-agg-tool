@@ -157,6 +157,7 @@ Examples:
   // always override balance + allowance — and use our own builder, since the
   // SDK's buildStateOverrides skips WBNB on the assumption of a msg.value path.
   const routerAddress = quote.routerAddress ?? config.routerAddress;
+  if (!routerAddress) throw new Error("Legacy SDK quote is missing the router address; use benchmark for current APIs");
   const stateOverrides = buildErc20StateOverrides(from, sender, routerAddress, amountIn * 2n);
 
   // Step 2: Full route simulation via SDK

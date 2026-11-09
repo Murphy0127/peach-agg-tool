@@ -20,7 +20,7 @@ import { loadOkxEnv } from "./lib/common.js";
 
 function printHelp() {
   console.log(`
-Peach vs OKX DEX Aggregator Testing Tool
+Peach ARC/BSC DEX Aggregator Testing Tool
 
 Usage:
   npx peach-agg-tool <command> [options]
@@ -30,6 +30,7 @@ Global options:
                        Default: ~/.config/peach-agg-tool/.env > ~/.okx/.env
 
 Commands:
+  benchmark <from> <target> <amount>  ARC/BSC current API comparison (--help)
   quote <from> <target> <amount>    Single pair quote (use --agg all to compare)
   compare [options]                 Continuous multi-round comparison
   dex-stats [options]               OKX DEX usage distribution
@@ -148,6 +149,11 @@ async function main() {
   }
 
   switch (cmd) {
+    case "benchmark": {
+      const { cmdBenchmark } = await import("./commands/benchmark.js");
+      await cmdBenchmark(rest);
+      break;
+    }
     case "quote": {
       const { cmdQuote } = await import("./commands/quote.js");
       await cmdQuote(rest);

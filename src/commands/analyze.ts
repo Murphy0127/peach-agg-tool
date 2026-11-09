@@ -94,7 +94,7 @@ export async function cmdAnalyze(args: string[]) {
     for (const b of buckets) { if (tradeUsd >= b.min && tradeUsd < b.max) { b.n++; if (qW === "okx") b.qo++; if (qW === "peach") b.qp++; if (sW === "okx") b.so++; if (sW === "peach") b.sp++; if (okx?.simStatus === "FAILED") b.oF++; if (peach?.simStatus === "FAILED") b.pF++; } }
 
     if (okx?.status === "OK" && okx.routes) {
-      const pDex = new Set((peach?.routes ?? []).map((r: any) => r.dexName?.toUpperCase()));
+      const pDex = new Set<string>((peach?.routes ?? []).map((r: any) => String(r.dexName ?? "").toUpperCase()));
       for (const r of okx.routes) {
         allOkxDex[r.dexName] = (allOkxDex[r.dexName] ?? 0) + (r.volumeUsd ?? 0);
         if (qW === "okx") { const m = pDex.has(r.dexName?.toUpperCase()) || [...pDex].some((p: string) => (r.dexName?.includes("PancakeSwap") && p.includes("PANCAKE")) || (r.dexName?.includes("Uniswap") && p.includes("UNISWAP")) || (r.dexName?.includes("DODO") && p.includes("DODO")) || (r.dexName?.includes("Thena") && p.includes("THENA"))); if (!m) okxOnlyDex[r.dexName] = (okxOnlyDex[r.dexName] ?? 0) + (r.volumeUsd ?? 0); }

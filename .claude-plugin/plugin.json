@@ -1,9 +1,16 @@
 {
   "name": "peach",
-  "version": "0.5.5",
-  "description": "Peach DEX aggregator tools - quote, compare, and analyze swap routes on BSC",
+  "version": "0.6.0",
+  "description": "Peach ARC/BSC aggregator quote comparison, simulation and route analysis",
   "author": {
     "name": "Peach Team"
   },
-  "keywords": ["peach", "aggregator", "dex", "bsc", "swap"]
+  "keywords": [
+    "peach",
+    "aggregator",
+    "dex",
+    "bsc",
+    "arc",
+    "swap"
+  ]
 }

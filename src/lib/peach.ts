@@ -98,6 +98,7 @@ export async function queryPeach(
       const simStart = Date.now();
       try {
         const routerAddress = quote.routerAddress ?? config.routerAddress;
+        if (!routerAddress) throw new Error("Legacy SDK quote is missing the router address; use benchmark for current APIs");
         // The router pulls srcToken via transferFrom even for native BNB input
         // (srcToken resolves to WBNB), so always override balance + allowance
         // for the sender; otherwise WBNB.transferFrom reverts with empty data.

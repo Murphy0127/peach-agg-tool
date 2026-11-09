@@ -1,0 +1,4 @@
+interface:
+  display_name: "Peach Aggregator"
+  short_description: "Compare ARC/BSC quotes and simulated swap output"
+  default_prompt: "用 $peach 对比指定 ARC/BSC 币对与输入量的报价和模拟到账，分析 Peach 的报价差距。"

@@ -4,16 +4,23 @@
     "name": "Peach Team"
   },
   "metadata": {
-    "description": "Peach DEX aggregator testing and comparison tool for BSC",
-    "version": "0.5.5"
+    "description": "Peach DEX aggregator testing and comparison tool for ARC/BSC",
+    "version": "0.6.0"
   },
   "plugins": [
     {
       "name": "peach",
       "source": "./",
-      "description": "Peach DEX aggregator tools - quote, compare, debug, and analyze swap routes on BSC",
+      "description": "Peach ARC/BSC aggregator quote comparison, simulation and route analysis",
       "category": "blockchain",
-      "tags": ["peach", "aggregator", "dex", "bsc", "swap"]
+      "tags": [
+        "peach",
+        "aggregator",
+        "dex",
+        "bsc",
+        "arc",
+        "swap"
+      ]
     }
   ]
 }
