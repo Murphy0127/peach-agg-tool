@@ -7,8 +7,12 @@ description: Compare Peach Aggregator quotes and simulated execution on ARC/BSC 
 
 Use the bundled `scripts/run.mjs` launcher with Node.js >=20.18.1. Resolve its
 absolute path from this skill's installed directory; do not assume the current
-working directory is the tool repository. It selects CLI version 0.6.0 from PATH
-or `~/.local/bin`, falling back to the exact npm package `peach-agg-tool@0.6.0`.
+working directory is the tool repository. It selects CLI version 0.6.1 from PATH
+or `~/.local/bin`, falling back through npx to the exact GitHub Release tarball
+`https://github.com/Murphy0127/peach-agg-tool/releases/download/v0.6.1/peach-agg-tool-0.6.1.tgz`.
+No npm login or publication of this tool to the npm registry is needed. A first
+run without an installed CLI needs network access to GitHub and public package
+dependencies; subsequent runs can reuse the npx cache.
 An explicit `PEACH_AGG_TOOL_BIN` overrides discovery and must match this version.
 
 ## Run a comparison

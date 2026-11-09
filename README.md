@@ -17,9 +17,9 @@ node dist/cli.mjs benchmark USDC 0x171a4217b86a807a64eb94757db6849fb4bdbaa0 1 --
 
 ## 安装
 
-需要 Node.js >=20.18.1。Codex 用户使用 **CLI + Skill**：安装 `peach-agg-tool@0.6.0`，
+需要 Node.js >=20.18.1。Codex 用户使用 **CLI + Skill**：从 GitHub Release 安装 CLI，
 再让 `$skill-installer` 安装
-`https://github.com/Murphy0127/peach-agg-tool/tree/v0.6.0/skills/peach`。
+`https://github.com/Murphy0127/peach-agg-tool/tree/v0.6.1/skills/peach`。
 之后可直接说“用 $peach 对比 ARC/BSC 上指定币对和金额”。Skill 启动器固定 CLI 版本，
 支持 PATH 和 `~/.local/bin`，从其他项目目录也可运行。
 完整安装命令、GitHub 发布包安装方式及发布流程见 [docs/releasing.md](docs/releasing.md)。
@@ -39,7 +39,8 @@ claude plugin install peach@peach-agg-tool
 ### 2. 仅作为 CLI 工具安装
 
 ```bash
-npm install -g peach-agg-tool
+npm install --global --prefix "$HOME/.local" https://github.com/Murphy0127/peach-agg-tool/releases/download/v0.6.1/peach-agg-tool-0.6.1.tgz
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ### 3. 配置凭证（可选）
@@ -70,9 +71,9 @@ claude plugin update peach@peach-agg-tool
 ```
 或在会话中执行 `/reload-plugins` 自动拉取最新版本。
 
-CLI 工具通过 npm 安装的：
+CLI 使用 GitHub Release 安装包更新，不依赖 npm registry 发布：
 ```bash
-npm update -g peach-agg-tool
+npm install --global --prefix "$HOME/.local" https://github.com/Murphy0127/peach-agg-tool/releases/download/v0.6.1/peach-agg-tool-0.6.1.tgz
 ```
 
 ## 使用
@@ -242,7 +243,7 @@ claude plugin uninstall peach@peach-agg-tool
 claude plugin marketplace remove peach-agg-tool
 
 # npm 方式安装的
-npm uninstall -g peach-agg-tool
+npm uninstall --global --prefix "$HOME/.local" peach-agg-tool
 ```
 
 ## ARC / BSC 当前 API 对比入口（benchmark）

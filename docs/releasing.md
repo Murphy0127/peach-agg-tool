@@ -17,32 +17,31 @@ implementation. Node.js >=20.18.1 is required by the HTTP dependency.
 4. Commit the reviewed sources and create an annotated `vVERSION` tag. Push
    without force; the default branch must remain a fast-forward. Create a
    GitHub Release for that tag and attach the same `.tgz` that was verified.
-5. With the package owner's valid npm authentication, run
-   `npm publish /absolute/release/directory/peach-agg-tool-VERSION.tgz --access public`.
-   Verify the registry's version, integrity and installed CLI. Never overwrite
-   an existing version or bypass account authentication/OTP.
+5. Download the published asset, verify its checksum, and test the skill
+   launcher with an isolated HOME, empty user npm config and fresh cache. This
+   verifies the first-run path without a local CLI or npm authentication.
 
-If npm authentication is unavailable, the GitHub Release tarball still supports
-an exact-version installation. Do not describe npm as published until the
-registry confirms it.
+GitHub Releases are the distribution source. Publishing this tool to the npm
+registry is not part of the release workflow. npm/npx remain installation
+clients and fetch the tarball's public dependencies; no npm login is needed.
+Never replace an existing release asset/tag with different bytes. Use a new
+patch version for distribution fixes.
 
-## Install CLI 0.6.0
+## Install CLI 0.6.1
 
-From npm, after that registry version exists:
-
-```bash
-npm install --global --prefix "$HOME/.local" peach-agg-tool@0.6.0
-```
-
-Or install the exact same artifact from the GitHub Release:
+Install the exact artifact from the GitHub Release:
 
 ```bash
-npm install --global --prefix "$HOME/.local" https://github.com/Murphy0127/peach-agg-tool/releases/download/v0.6.0/peach-agg-tool-0.6.0.tgz
+npm install --global --prefix "$HOME/.local" https://github.com/Murphy0127/peach-agg-tool/releases/download/v0.6.1/peach-agg-tool-0.6.1.tgz
 ```
 
 The skill launcher searches both PATH and `~/.local/bin`, so shell profile
 changes are unnecessary for skill use. For direct terminal use, invoke
 `~/.local/bin/peach-agg-tool` or add `~/.local/bin` to your PATH.
+
+If no matching CLI is installed, the skill launcher uses npx to install this
+same tagged GitHub asset into the user's npm cache. It never requests
+`peach-agg-tool@latest` or a version that must exist on the npm registry.
 
 ## Install the Codex skill
 
@@ -50,7 +49,7 @@ Ask Codex:
 
 ```text
 Use $skill-installer to install the peach skill from
-https://github.com/Murphy0127/peach-agg-tool/tree/v0.6.0/skills/peach
+https://github.com/Murphy0127/peach-agg-tool/tree/v0.6.1/skills/peach
 ```
 
 For local development, Codex also discovers a symlink in `~/.agents/skills`:

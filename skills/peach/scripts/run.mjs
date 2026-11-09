@@ -3,7 +3,8 @@ import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const version = "0.6.0";
+const version = "0.6.1";
+const release = `https://github.com/Murphy0127/peach-agg-tool/releases/download/v${version}/peach-agg-tool-${version}.tgz`;
 const args = process.argv.slice(2);
 const explicit = process.env.PEACH_AGG_TOOL_BIN;
 const candidates = explicit ? [explicit] : ["peach-agg-tool", join(homedir(), ".local", "bin", "peach-agg-tool")];
@@ -18,6 +19,6 @@ if (explicit && !command) {
 }
 const result = command
   ? spawnSync(command, args, { stdio: "inherit" })
-  : spawnSync("npx", ["--yes", `--package=peach-agg-tool@${version}`, "peach-agg-tool", ...args], { stdio: "inherit" });
+  : spawnSync("npx", ["--yes", `--package=${release}`, "peach-agg-tool", ...args], { stdio: "inherit" });
 if (result.error) console.error(result.error.message);
 process.exit(result.status ?? 1);

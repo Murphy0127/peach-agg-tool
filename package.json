@@ -1,6 +1,6 @@
 {
   "name": "peach-agg-tool",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "ARC/BSC aggregator quote comparison, execution simulation and evidence-based analysis",
   "type": "module",
   "bin": {
